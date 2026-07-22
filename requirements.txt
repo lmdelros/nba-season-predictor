@@ -1,0 +1,6 @@
+psycopg2-binary
+nba_api
+pandas
+scikit-learn
+matplotlib
+streamlit
