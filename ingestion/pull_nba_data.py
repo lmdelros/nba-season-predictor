@@ -110,6 +110,87 @@ def upsert_games(conn, rows):
     conn.commit()
 
 
+def fetch_player_box_scores(season, season_type="Regular Season"):
+    return leaguegamelog.LeagueGameLog(
+        season=season, season_type_all_star=season_type, player_or_team_abbreviation="P"
+    ).get_data_frames()[0]
+
+
+def fetch_players(df):
+    dedup = df.drop_duplicates(subset="PLAYER_ID")
+    return [
+        {"player_id": int(r.PLAYER_ID), "full_name": r.PLAYER_NAME}
+        for r in dedup.itertuples()
+    ]
+
+
+def upsert_players(conn, rows):
+    sql = """
+        INSERT INTO players (player_id, full_name)
+        VALUES (%(player_id)s, %(full_name)s)
+        ON CONFLICT (player_id) DO UPDATE SET full_name = EXCLUDED.full_name
+    """
+    with conn.cursor() as cur:
+        cur.executemany(sql, rows)
+    conn.commit()
+
+
+def fetch_player_game_stats(df):
+    return [
+        {
+            "game_id": r.GAME_ID,
+            "player_id": int(r.PLAYER_ID),
+            "team_id": int(r.TEAM_ID),
+            "minutes": r.MIN,
+            "points": r.PTS,
+            "rebounds": r.REB,
+            "assists": r.AST,
+            "steals": r.STL,
+            "blocks": r.BLK,
+            "turnovers": r.TOV,
+            "fg_made": r.FGM,
+            "fg_attempted": r.FGA,
+            "fg3_made": r.FG3M,
+            "fg3_attempted": r.FG3A,
+            "ft_made": r.FTM,
+            "ft_attempted": r.FTA,
+            "plus_minus": r.PLUS_MINUS,
+        }
+        for r in df.itertuples()
+    ]
+
+
+def upsert_player_game_stats(conn, rows):
+    sql = """
+        INSERT INTO player_game_stats (game_id, player_id, team_id, minutes, points,
+                                        rebounds, assists, steals, blocks, turnovers,
+                                        fg_made, fg_attempted, fg3_made, fg3_attempted,
+                                        ft_made, ft_attempted, plus_minus)
+        VALUES (%(game_id)s, %(player_id)s, %(team_id)s, %(minutes)s, %(points)s,
+                %(rebounds)s, %(assists)s, %(steals)s, %(blocks)s, %(turnovers)s,
+                %(fg_made)s, %(fg_attempted)s, %(fg3_made)s, %(fg3_attempted)s,
+                %(ft_made)s, %(ft_attempted)s, %(plus_minus)s)
+        ON CONFLICT (game_id, player_id) DO UPDATE SET
+            minutes = EXCLUDED.minutes,
+            points = EXCLUDED.points,
+            rebounds = EXCLUDED.rebounds,
+            assists = EXCLUDED.assists,
+            steals = EXCLUDED.steals,
+            blocks = EXCLUDED.blocks,
+            turnovers = EXCLUDED.turnovers,
+            fg_made = EXCLUDED.fg_made,
+            fg_attempted = EXCLUDED.fg_attempted,
+            fg3_made = EXCLUDED.fg3_made,
+            fg3_attempted = EXCLUDED.fg3_attempted,
+            ft_made = EXCLUDED.ft_made,
+            ft_attempted = EXCLUDED.ft_attempted,
+            plus_minus = EXCLUDED.plus_minus
+    """
+    with conn.cursor() as cur:
+        cur.executemany(sql, rows)
+    conn.commit()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--season", required=True, help="e.g. 2024-25")
@@ -118,6 +199,11 @@ def main():
     conn = get_db_connection()
     upsert_teams(conn, fetch_teams())
     upsert_games(conn, fetch_games(args.season))
+
+    box_scores = fetch_player_box_scores(args.season)
+    upsert_players(conn, fetch_players(box_scores))
+    upsert_player_game_stats(conn, fetch_player_game_stats(box_scores))
+
     conn.close()
 
 
