@@ -60,6 +60,8 @@ CREATE TABLE player_game_stats (
     minutes         NUMERIC(5,2),
     points          INTEGER,
     rebounds        INTEGER,
+    offensive_rebounds INTEGER,
+    defensive_rebounds INTEGER,
     assists         INTEGER,
     steals          INTEGER,
     blocks          INTEGER,

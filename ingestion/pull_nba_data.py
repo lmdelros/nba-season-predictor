@@ -144,6 +144,8 @@ def fetch_player_game_stats(df):
             "minutes": r.MIN,
             "points": r.PTS,
             "rebounds": r.REB,
+            "offensive_rebounds": r.OREB,
+            "defensive_rebounds": r.DREB,
             "assists": r.AST,
             "steals": r.STL,
             "blocks": r.BLK,
@@ -163,17 +165,21 @@ def fetch_player_game_stats(df):
 def upsert_player_game_stats(conn, rows):
     sql = """
         INSERT INTO player_game_stats (game_id, player_id, team_id, minutes, points,
-                                        rebounds, assists, steals, blocks, turnovers,
+                                        rebounds, offensive_rebounds, defensive_rebounds,
+                                        assists, steals, blocks, turnovers,
                                         fg_made, fg_attempted, fg3_made, fg3_attempted,
                                         ft_made, ft_attempted, plus_minus)
         VALUES (%(game_id)s, %(player_id)s, %(team_id)s, %(minutes)s, %(points)s,
-                %(rebounds)s, %(assists)s, %(steals)s, %(blocks)s, %(turnovers)s,
+                %(rebounds)s, %(offensive_rebounds)s, %(defensive_rebounds)s,
+                %(assists)s, %(steals)s, %(blocks)s, %(turnovers)s,
                 %(fg_made)s, %(fg_attempted)s, %(fg3_made)s, %(fg3_attempted)s,
                 %(ft_made)s, %(ft_attempted)s, %(plus_minus)s)
         ON CONFLICT (game_id, player_id) DO UPDATE SET
             minutes = EXCLUDED.minutes,
             points = EXCLUDED.points,
             rebounds = EXCLUDED.rebounds,
+            offensive_rebounds = EXCLUDED.offensive_rebounds,
+            defensive_rebounds = EXCLUDED.defensive_rebounds,
             assists = EXCLUDED.assists,
             steals = EXCLUDED.steals,
             blocks = EXCLUDED.blocks,
