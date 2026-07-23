@@ -52,6 +52,38 @@ def estimate_possessions(fga, fta, oreb, tov):
     return fga + 0.44 * fta - oreb + tov
 
 
+def load_player_clusters(conn, season):
+    sql = "SELECT player_id, cluster_id FROM player_clusters WHERE season = %(season)s"
+    return pd.read_sql(sql, conn, params={"season": season})
+
+
+def load_game_player_minutes(conn, season):
+    sql = """
+        SELECT pgs.game_id, pgs.team_id, pgs.player_id, pgs.minutes
+        FROM player_game_stats pgs
+        JOIN games g ON g.game_id = pgs.game_id
+        WHERE g.season = %(season)s
+    """
+    return pd.read_sql(sql, conn, params={"season": season})
+
+
+def compute_cluster_diversity(game_minutes, clusters):
+    # Players below the clustering minutes threshold have no cluster_id; their
+    # minutes are dropped and the rest renormalized, since their archetype is unknown.
+    df = game_minutes.merge(clusters, on="player_id", how="inner")
+
+    by_cluster = df.groupby(["game_id", "team_id", "cluster_id"])["minutes"].sum().reset_index()
+    totals = by_cluster.groupby(["game_id", "team_id"])["minutes"].transform("sum")
+    by_cluster["share"] = by_cluster["minutes"] / totals
+
+    diversity = (
+        by_cluster.groupby(["game_id", "team_id"])["share"]
+        .apply(lambda shares: 1 - (shares ** 2).sum())
+        .reset_index(name="cluster_diversity_score")
+    )
+    return diversity
+
+
 def add_season_splits(df):
     """Team's home/away win % so far this season, as of (not including) this game."""
     home_pct = pd.Series(index=df.index, dtype=float)
@@ -117,8 +149,10 @@ def build_features(conn, season):
 
     df = add_season_splits(df)
 
-    # Populated later once player clustering (models/train_player_clusters.py) exists.
-    df["cluster_diversity_score"] = None
+    clusters = load_player_clusters(conn, season)
+    game_minutes = load_game_player_minutes(conn, season)
+    diversity = compute_cluster_diversity(game_minutes, clusters)
+    df = df.merge(diversity, on=["game_id", "team_id"], how="left")
 
     return df
 
@@ -161,7 +195,8 @@ def upsert_team_game_features(conn, df):
             rolling_def_rating = EXCLUDED.rolling_def_rating,
             h2h_win_pct_season = EXCLUDED.h2h_win_pct_season,
             season_win_pct_home = EXCLUDED.season_win_pct_home,
-            season_win_pct_away = EXCLUDED.season_win_pct_away
+            season_win_pct_away = EXCLUDED.season_win_pct_away,
+            cluster_diversity_score = EXCLUDED.cluster_diversity_score
     """
     with conn.cursor() as cur:
         cur.executemany(sql, records)
