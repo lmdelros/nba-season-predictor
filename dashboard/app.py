@@ -113,7 +113,10 @@ def conference_bar_chart(sim_df):
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.legend(
-        handles=[Patch(facecolor=EAST_COLOR, label="East"), Patch(facecolor=WEST_COLOR, label="West")],
+        handles=[
+            Patch(facecolor=EAST_COLOR, label="East"),
+            Patch(facecolor=WEST_COLOR, label="West"),
+        ],
         loc="lower right",
     )
     fig.tight_layout()

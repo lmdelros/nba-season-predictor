@@ -175,7 +175,9 @@ def determine_playoff_teams(final_wins, teams_df):
     return playoff_teams
 
 
-def run_simulations(current_wins, remaining_games, win_probs, teams_df, n_simulations=10000, seed=42):
+def run_simulations(
+    current_wins, remaining_games, win_probs, teams_df, n_simulations=10000, seed=42
+):
     """Runs simulate_one_season() n_simulations times and aggregates:
       - avg_wins: mean final win total per team across all sims
       - playoff_pct: fraction of sims where each team made the playoffs
@@ -268,8 +270,14 @@ def main():
     )
     batch_id = save_simulation_results(conn, results, args.season, args.n_simulations)
 
-    print(f"Simulated {args.n_simulations} seasons from {args.cutoff_date} onward. batch_id={batch_id}")
-    print(results.merge(teams_df, on="team_id").sort_values("playoff_pct", ascending=False).to_string())
+    print(
+        f"Simulated {args.n_simulations} seasons from {args.cutoff_date} onward. "
+        f"batch_id={batch_id}"
+    )
+    standings = results.merge(teams_df, on="team_id").sort_values(
+        "playoff_pct", ascending=False
+    )
+    print(standings.to_string())
 
     conn.close()
 

@@ -6,7 +6,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.preprocessing import StandardScaler
 
-from train_win_probability import (
+from models.train_win_probability import (
     FEATURE_COLUMNS,
     apply_imputer,
     fit_imputer,
@@ -45,7 +45,8 @@ def evaluate(model, scaler, train_df, test_df):
     implied_accuracy = (implied_win == actual_win).mean()
 
     print(f"Test games: {len(test_df)}")
-    print(f"MAE:  {mae:.2f} points  (baseline 'always predict train-avg margin': {baseline_mae:.2f})")
+    print(f"MAE:  {mae:.2f} points  "
+          f"(baseline 'always predict train-avg margin': {baseline_mae:.2f})")
     print(f"RMSE: {rmse:.2f} points")
     print(f"Implied win/loss accuracy (sign of predicted margin): {implied_accuracy:.3f}")
 

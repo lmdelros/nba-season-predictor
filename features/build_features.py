@@ -119,7 +119,9 @@ def build_features(conn, season):
     df = df.merge(opp_box, on=["game_id", "opp_id"], how="left")
 
     df["poss"] = estimate_possessions(df["fga"], df["fta"], df["oreb"], df["tov"])
-    df["opp_poss"] = estimate_possessions(df["opp_fga"], df["opp_fta"], df["opp_oreb"], df["opp_tov"])
+    df["opp_poss"] = estimate_possessions(
+        df["opp_fga"], df["opp_fta"], df["opp_oreb"], df["opp_tov"]
+    )
     df["off_rtg_game"] = 100 * df["points_for"] / df["poss"]
     df["def_rtg_game"] = 100 * df["points_against"] / df["opp_poss"]
     df["win"] = (df["points_for"] > df["points_against"]).astype(int)
@@ -181,8 +183,8 @@ def upsert_team_game_features(conn, df):
     sql = """
         INSERT INTO team_game_features (game_id, team_id, rolling_win_pct_l10, rest_days,
                                          is_back_to_back, rolling_off_rating, rolling_def_rating,
-                                         h2h_win_pct_season, season_win_pct_home, season_win_pct_away,
-                                         cluster_diversity_score)
+                                         h2h_win_pct_season, season_win_pct_home,
+                                         season_win_pct_away, cluster_diversity_score)
         VALUES (%(game_id)s, %(team_id)s, %(rolling_win_pct_l10)s, %(rest_days)s,
                 %(is_back_to_back)s, %(rolling_off_rating)s, %(rolling_def_rating)s,
                 %(h2h_win_pct_season)s, %(season_win_pct_home)s, %(season_win_pct_away)s,
