@@ -36,17 +36,32 @@ def get_db_connection():
     )
 
 
-def load_candidate_pool(conn, seasons, award_type, rank_by):
+def load_candidate_pool(conn, seasons, award_type, rank_by, rookies_only=False):
     """Per season: the top CANDIDATES_PER_SEASON players by `rank_by`,
     joined with their team's win% and the award_type ground-truth label.
+
+    rookies_only (for ROY): restricts the pool to each player's first season
+    in player_season_stats before ranking — same "first appearance in our
+    data" heuristic ingestion/pull_award_data.py uses, so the candidates a
+    season's rows should be identical between the two.
     """
+    source = "player_season_stats pss"
+    if rookies_only:
+        source = """(
+            SELECT pss.* FROM player_season_stats pss
+            JOIN (
+                SELECT player_id, MIN(season) AS rookie_season
+                FROM player_season_stats GROUP BY player_id
+            ) fs ON fs.player_id = pss.player_id AND fs.rookie_season = pss.season
+        ) pss"""
+
     sql = f"""
         WITH ranked AS (
             SELECT pss.*, tss.win_pct AS team_win_pct,
                    row_number() OVER (
                        PARTITION BY pss.season ORDER BY {RANK_EXPRESSIONS[rank_by]} DESC
                    ) AS rank_in_season
-            FROM player_season_stats pss
+            FROM {source}
             JOIN team_season_standings tss
                 ON tss.team_id = pss.team_id AND tss.season = pss.season
             WHERE pss.season = ANY(%(seasons)s)
@@ -129,13 +144,14 @@ def save_predictions(conn, test_df, award_type, model_version):
     conn.commit()
 
 
-def run(award_type, rank_by, model_version, start_season, end_season, test_seasons):
+def run(award_type, rank_by, model_version, start_season, end_season, test_seasons,
+        rookies_only=False):
     start_year = int(start_season[:4])
     end_year = int(end_season[:4])
     seasons = [f"{y}-{str(y + 1)[2:]}" for y in range(start_year, end_year + 1)]
 
     conn = get_db_connection()
-    df = load_candidate_pool(conn, seasons, award_type, rank_by)
+    df = load_candidate_pool(conn, seasons, award_type, rank_by, rookies_only=rookies_only)
 
     train_seasons = seasons[:-test_seasons]
     eval_seasons = seasons[-test_seasons:]

@@ -6,6 +6,7 @@ import argparse
 import os
 import time
 
+import pandas as pd
 import psycopg2
 from nba_api.stats.endpoints import (
     leaguedashplayerstats,
@@ -22,11 +23,15 @@ from nba_api.stats.static import teams as static_teams
 # teams), steals+blocks ("stocks") for DPOY — an imperfect proxy that can
 # miss a positional/versatility-driven winner like Draymond Green, worth
 # knowing as a real limitation rather than silently trusting the shortlist.
+# ROY is a special case: "top by points among rookies", not "top by points
+# league-wide" — handled separately in build_roy_candidates() below, since it
+# needs a cross-season query rather than one season's in-memory DataFrame.
 CANDIDATES_PER_SEASON = 20
 
 AWARD_LABELS = {
     "mvp": "NBA Most Valuable Player",
     "dpoy": "NBA Defensive Player of the Year",
+    "roy": "NBA Rookie of the Year",
 }
 
 CANDIDATE_HEURISTICS = {
@@ -158,6 +163,35 @@ def upsert_team_standings(conn, standings_df, season):
     conn.commit()
 
 
+def build_roy_candidates(conn, seasons):
+    """A player's rookie season is the earliest season they appear in our
+    own player_season_stats — no extra API calls needed, just enough buffer
+    seasons pulled before the modeling range that "first appearance in our
+    data" actually means "first appearance in the NBA" for everyone. Ranks
+    each season's rookies by points, same shortlist size as the other
+    awards.
+    """
+    sql = """
+        WITH first_season AS (
+            SELECT player_id, MIN(season) AS rookie_season
+            FROM player_season_stats
+            GROUP BY player_id
+        )
+        SELECT pss.player_id, pss.season, pss.points
+        FROM player_season_stats pss
+        JOIN first_season fs
+            ON fs.player_id = pss.player_id AND fs.rookie_season = pss.season
+        WHERE pss.season = ANY(%(seasons)s)
+    """
+    df = pd.read_sql(sql, conn, params={"seasons": seasons})
+
+    candidates = set()
+    for _, group in df.groupby("season"):
+        top_rookies = group.sort_values("points", ascending=False).head(CANDIDATES_PER_SEASON)
+        candidates.update(int(pid) for pid in top_rookies["player_id"])
+    return candidates
+
+
 def upsert_award(conn, player_id, season, award_type):
     sql = """
         INSERT INTO player_awards (player_id, season, award_type)
@@ -177,11 +211,23 @@ def main():
         "--awards", default="mvp",
         help=f"comma-separated, from {list(AWARD_LABELS)}",
     )
+    parser.add_argument(
+        "--buffer-seasons", type=int, default=0,
+        help=(
+            "extra seasons to pull before --start-season, stats only (no award "
+            "checking) — needed for --awards roy so 'first season in our data' "
+            "isn't confused with 'rookie season' for anyone already active when "
+            "--start-season begins"
+        ),
+    )
     args = parser.parse_args()
 
     start_year = int(args.start_season[:4])
     end_year = int(args.end_season[:4])
     seasons = [f"{y}-{str(y + 1)[2:]}" for y in range(start_year, end_year + 1)]
+    buffer_seasons = [
+        f"{y}-{str(y + 1)[2:]}" for y in range(start_year - args.buffer_seasons, start_year)
+    ]
     awards = args.awards.split(",")
 
     conn = get_db_connection()
@@ -189,7 +235,7 @@ def main():
 
     candidate_player_ids = set()
 
-    for season in seasons:
+    for season in buffer_seasons + seasons:
         print(f"{season}: pulling player stats + standings...")
         stats_df = fetch_season_player_stats(season)
         standings_df = fetch_season_standings(season)
@@ -198,10 +244,15 @@ def main():
         upsert_player_season_stats(conn, stats_df, season)
         upsert_team_standings(conn, standings_df, season)
 
-        for award in awards:
-            shortlist = CANDIDATE_HEURISTICS[award](stats_df).head(CANDIDATES_PER_SEASON)
-            candidate_player_ids.update(int(pid) for pid in shortlist["PLAYER_ID"])
+        if season in seasons:
+            for award in awards:
+                if award in CANDIDATE_HEURISTICS:
+                    shortlist = CANDIDATE_HEURISTICS[award](stats_df).head(CANDIDATES_PER_SEASON)
+                    candidate_player_ids.update(int(pid) for pid in shortlist["PLAYER_ID"])
         time.sleep(0.6)  # be polite to stats.nba.com between season calls
+
+    if "roy" in awards:
+        candidate_player_ids.update(build_roy_candidates(conn, seasons))
 
     print(f"Checking award history for {len(candidate_player_ids)} candidate players...")
     for player_id in candidate_player_ids:
