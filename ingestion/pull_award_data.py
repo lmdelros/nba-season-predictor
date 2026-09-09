@@ -1,7 +1,7 @@
 # Backfills player_season_stats, team_season_standings, and player_awards
 # across many historical seasons — cheap, season-level data for award
-# modeling (MVP first), as opposed to the game-by-game pipeline the win
-# probability/margin models use.
+# modeling, as opposed to the game-by-game pipeline the win probability/
+# margin models use.
 import argparse
 import os
 import time
@@ -14,14 +14,26 @@ from nba_api.stats.endpoints import (
 )
 from nba_api.stats.static import teams as static_teams
 
-# Award winners are always significant statistical performers — restricting
-# playerawards lookups (one call per player, expensive to run for everyone)
-# to each season's top scorers keeps the candidate pool small while still
-# reliably covering every real MVP/DPOY winner in NBA history.
+# Award winners are always significant statistical performers along the axis
+# that award cares about — restricting playerawards lookups (one call per
+# player, expensive to run for everyone) to each season's shortlist on the
+# relevant stat keeps the candidate pool small while still reliably covering
+# every real winner. Points for MVP (voters reward top scorers on good
+# teams), steals+blocks ("stocks") for DPOY — an imperfect proxy that can
+# miss a positional/versatility-driven winner like Draymond Green, worth
+# knowing as a real limitation rather than silently trusting the shortlist.
 CANDIDATES_PER_SEASON = 20
 
 AWARD_LABELS = {
     "mvp": "NBA Most Valuable Player",
+    "dpoy": "NBA Defensive Player of the Year",
+}
+
+CANDIDATE_HEURISTICS = {
+    "mvp": lambda df: df.sort_values("PTS", ascending=False),
+    "dpoy": lambda df: df.assign(STOCKS=df["STL"] + df["BLK"]).sort_values(
+        "STOCKS", ascending=False
+    ),
 }
 
 
@@ -146,14 +158,14 @@ def upsert_team_standings(conn, standings_df, season):
     conn.commit()
 
 
-def upsert_mvp_award(conn, player_id, season):
+def upsert_award(conn, player_id, season, award_type):
     sql = """
         INSERT INTO player_awards (player_id, season, award_type)
-        VALUES (%(player_id)s, %(season)s, 'mvp')
+        VALUES (%(player_id)s, %(season)s, %(award_type)s)
         ON CONFLICT (season, award_type) DO UPDATE SET player_id = EXCLUDED.player_id
     """
     with conn.cursor() as cur:
-        cur.execute(sql, {"player_id": player_id, "season": season})
+        cur.execute(sql, {"player_id": player_id, "season": season, "award_type": award_type})
     conn.commit()
 
 
@@ -161,11 +173,16 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start-season", required=True, help="e.g. 2010-11")
     parser.add_argument("--end-season", required=True, help="e.g. 2024-25")
+    parser.add_argument(
+        "--awards", default="mvp",
+        help=f"comma-separated, from {list(AWARD_LABELS)}",
+    )
     args = parser.parse_args()
 
     start_year = int(args.start_season[:4])
     end_year = int(args.end_season[:4])
     seasons = [f"{y}-{str(y + 1)[2:]}" for y in range(start_year, end_year + 1)]
+    awards = args.awards.split(",")
 
     conn = get_db_connection()
     upsert_teams_if_missing(conn)
@@ -181,20 +198,22 @@ def main():
         upsert_player_season_stats(conn, stats_df, season)
         upsert_team_standings(conn, standings_df, season)
 
-        top_scorers = stats_df.sort_values("PTS", ascending=False).head(CANDIDATES_PER_SEASON)
-        candidate_player_ids.update(int(pid) for pid in top_scorers["PLAYER_ID"])
+        for award in awards:
+            shortlist = CANDIDATE_HEURISTICS[award](stats_df).head(CANDIDATES_PER_SEASON)
+            candidate_player_ids.update(int(pid) for pid in shortlist["PLAYER_ID"])
         time.sleep(0.6)  # be polite to stats.nba.com between season calls
 
     print(f"Checking award history for {len(candidate_player_ids)} candidate players...")
     for player_id in candidate_player_ids:
         awards_df = playerawards.PlayerAwards(player_id=player_id).get_data_frames()[0]
-        mvp_seasons = awards_df.loc[
-            awards_df["DESCRIPTION"] == AWARD_LABELS["mvp"], "SEASON"
-        ]
-        for season in mvp_seasons:
-            if season in seasons:
-                upsert_mvp_award(conn, player_id, season)
-                print(f"  MVP {season}: player_id={player_id}")
+        for award in awards:
+            matching_seasons = awards_df.loc[
+                awards_df["DESCRIPTION"] == AWARD_LABELS[award], "SEASON"
+            ]
+            for season in matching_seasons:
+                if season in seasons:
+                    upsert_award(conn, player_id, season, award)
+                    print(f"  {award.upper()} {season}: player_id={player_id}")
         time.sleep(0.6)
 
     conn.close()
