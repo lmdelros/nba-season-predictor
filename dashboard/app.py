@@ -15,13 +15,20 @@ WEST_COLOR = "#eb6834"
 
 @st.cache_resource
 def get_db_connection():
-    return psycopg2.connect(
+    # autocommit: this connection is cached and shared for the app's entire
+    # lifetime. Without it, psycopg2's default (one implicit transaction per
+    # query, never committed) leaves the connection "idle in transaction"
+    # forever after the first page load — holding a lock that blocks any
+    # later DROP TABLE/ALTER TABLE against the same tables (e.g. a restore).
+    conn = psycopg2.connect(
         host=os.environ.get("DB_HOST", "localhost"),
         port=os.environ.get("DB_PORT", "5433"),
         dbname=os.environ.get("DB_NAME", "nba_predictor"),
         user=os.environ.get("DB_USER", "nba"),
         password=os.environ.get("DB_PASSWORD", "nba"),
     )
+    conn.autocommit = True
+    return conn
 
 
 @st.cache_data
