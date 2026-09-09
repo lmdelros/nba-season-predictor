@@ -106,7 +106,11 @@ def get_win_probabilities(conn, season, cutoff_date):
     script. Training fresh at this exact cutoff keeps train/predict strictly
     time-ordered, matching the same no-leakage rule used everywhere else.
 
-    Return: dict of {game_id: home_win_probability}.
+    Also returns the fitted model/scaler/fills so the playoff bracket
+    simulation can score hypothetical matchups with the exact same model
+    instead of training a second one.
+
+    Return: (dict of {game_id: home_win_probability}, model, scaler, fills).
     """
     df = load_training_data(conn, season)
     cutoff = pd.Timestamp(cutoff_date)
@@ -125,7 +129,131 @@ def get_win_probabilities(conn, season, cutoff_date):
     X_remaining = scaler.transform(remaining_df[FEATURE_COLUMNS].astype(float))
     probs = model.predict_proba(X_remaining)[:, 1]
 
-    return dict(zip(remaining_df["game_id"], probs))
+    return dict(zip(remaining_df["game_id"], probs)), model, scaler, fills
+
+
+def load_team_snapshot_features(conn, season):
+    """Each team's most recent team_game_features row for the season — a
+    'current form' snapshot used to build hypothetical playoff matchups that
+    may not correspond to any single real game (or any game at all, if two
+    teams meeting in the Finals never played each other pre-cutoff).
+    """
+    sql = """
+        SELECT DISTINCT ON (tgf.team_id)
+            tgf.team_id, tgf.rolling_win_pct_l10, tgf.rolling_off_rating,
+            tgf.rolling_def_rating, tgf.season_win_pct_home, tgf.season_win_pct_away
+        FROM team_game_features tgf
+        JOIN games g ON g.game_id = tgf.game_id
+        WHERE g.season = %(season)s
+        ORDER BY tgf.team_id, g.game_date DESC
+    """
+    return pd.read_sql(sql, conn, params={"season": season}).set_index("team_id")
+
+
+def build_matchup_features(home_id, away_id, snapshot, fills):
+    """One FEATURE_COLUMNS-shaped row for a hypothetical game between two
+    teams' end-of-season form snapshots.
+
+    Two fields are deliberately NOT taken from real data: head-to-head is set
+    to a neutral 0.5 rather than reconstructed from their actual regular
+    season meetings (which may be zero, or lopsided by matchup luck), and
+    rest/back-to-back use league-average fills rather than whatever each
+    team's rest happened to be on the last day of the regular season —
+    playoff scheduling has its own rest pattern unrelated to that.
+    """
+    home = snapshot.loc[home_id]
+    away = snapshot.loc[away_id]
+    return {
+        "home_rolling_win_pct_l10": home["rolling_win_pct_l10"],
+        "away_rolling_win_pct_l10": away["rolling_win_pct_l10"],
+        "home_rolling_off_rating": home["rolling_off_rating"],
+        "home_rolling_def_rating": home["rolling_def_rating"],
+        "away_rolling_off_rating": away["rolling_off_rating"],
+        "away_rolling_def_rating": away["rolling_def_rating"],
+        "home_rest_days": fills["home_rest_days"],
+        "away_rest_days": fills["away_rest_days"],
+        "home_is_back_to_back": 0,
+        "away_is_back_to_back": 0,
+        "home_h2h_win_pct_season": 0.5,
+        "home_season_win_pct_home": home["season_win_pct_home"],
+        "away_season_win_pct_away": away["season_win_pct_away"],
+    }
+
+
+def compute_pairwise_win_probs(team_ids, snapshot, model, scaler, fills):
+    """P(home team wins) for every ordered pair of teams that could plausibly
+    meet in the playoffs, scored once with the same trained model used for
+    the regular season — team snapshots are fixed, so this doesn't need to
+    be recomputed on every one of the n_simulations bracket runs.
+
+    Return: dict of {(home_id, away_id): home_win_probability}.
+    """
+    rows, pairs = [], []
+    for home_id in team_ids:
+        for away_id in team_ids:
+            if home_id == away_id:
+                continue
+            rows.append(build_matchup_features(home_id, away_id, snapshot, fills))
+            pairs.append((home_id, away_id))
+
+    df = apply_imputer(pd.DataFrame(rows), fills)
+    X = scaler.transform(df[FEATURE_COLUMNS].astype(float))
+    probs = model.predict_proba(X)[:, 1]
+    return dict(zip(pairs, probs))
+
+
+# 2-2-1-1-1 format: True means the higher seed hosts that game of the series.
+SERIES_HOME_GAMES = [True, True, False, False, True, False, True]
+
+
+def simulate_series(higher_seed, lower_seed, pairwise_probs, rng):
+    """Best-of-7 between two already-seeded teams, home court favoring the
+    higher seed in the standard 2-2-1-1-1 pattern. Stops as soon as either
+    side reaches 4 wins rather than always playing out 7 games.
+    """
+    wins = {higher_seed: 0, lower_seed: 0}
+    for higher_seed_hosts in SERIES_HOME_GAMES:
+        home, away = (higher_seed, lower_seed) if higher_seed_hosts else (lower_seed, higher_seed)
+        winner = home if rng.random() < pairwise_probs[(home, away)] else away
+        wins[winner] += 1
+        if wins[winner] == 4:
+            return winner
+    return higher_seed if wins[higher_seed] > wins[lower_seed] else lower_seed
+
+
+def simulate_conference(seeds, pairwise_probs, rng):
+    """seeds: the conference's 8 playoff teams ordered 1st through 8th by
+    final win total. Fixed NBA bracket (no reseeding after round 1):
+    (1v8)/(4v5) meet in one semifinal, (2v7)/(3v6) meet in the other.
+    """
+    by_seed = seeds.index
+    r1 = [
+        simulate_series(seeds[0], seeds[7], pairwise_probs, rng),
+        simulate_series(seeds[3], seeds[4], pairwise_probs, rng),
+        simulate_series(seeds[2], seeds[5], pairwise_probs, rng),
+        simulate_series(seeds[1], seeds[6], pairwise_probs, rng),
+    ]
+    semi_a = simulate_series(*sorted(r1[0:2], key=by_seed), pairwise_probs, rng)
+    semi_b = simulate_series(*sorted(r1[2:4], key=by_seed), pairwise_probs, rng)
+    return simulate_series(*sorted([semi_a, semi_b], key=by_seed), pairwise_probs, rng)
+
+
+def simulate_playoff_bracket(final_wins, teams_df, pairwise_probs, rng):
+    """One simulated postseason built on top of one simulate_one_season()
+    result: seed each conference's top 8 by that simulation's final_wins,
+    play out both conference brackets, then the two conference champions
+    meet in the Finals with home court going to whoever has the better
+    regular-season record overall (the real NBA rule since 2014).
+
+    Return: champion team_id for this one simulation.
+    """
+    champions = []
+    for _, group in teams_df.groupby("conference"):
+        seeds = sorted(group["team_id"], key=lambda t: -final_wins.get(t, 0))[:8]
+        champions.append(simulate_conference(seeds, pairwise_probs, rng))
+
+    higher, lower = sorted(champions, key=lambda t: -final_wins.get(t, 0))
+    return simulate_series(higher, lower, pairwise_probs, rng)
 
 
 def simulate_one_season(current_wins, remaining_games, win_probs, rng):
@@ -176,22 +304,21 @@ def determine_playoff_teams(final_wins, teams_df):
 
 
 def run_simulations(
-    current_wins, remaining_games, win_probs, teams_df, n_simulations=10000, seed=42
+    current_wins, remaining_games, win_probs, teams_df, pairwise_probs,
+    n_simulations=10000, seed=42,
 ):
     """Runs simulate_one_season() n_simulations times and aggregates:
       - avg_wins: mean final win total per team across all sims
       - playoff_pct: fraction of sims where each team made the playoffs
+      - championship_pct: fraction of sims where each team won the Finals,
+        via simulate_playoff_bracket() on top of that same simulated season
 
-    championship_pct is NOT computed here yet — that needs a full playoff
-    bracket simulation (seeding, best-of-7 series, round by round), which is
-    a separate, bigger piece of work. Leave it out of season_simulations for
-    now (NULL) rather than faking it.
-
-    Return: DataFrame with columns team_id, avg_wins, playoff_pct.
+    Return: DataFrame with columns team_id, avg_wins, playoff_pct, championship_pct.
     """
     rng = np.random.default_rng(seed)
     win_totals = []
     made_playoffs = []
+    champions = []
 
     for _ in range(n_simulations):
         final_wins = simulate_one_season(current_wins, remaining_games, win_probs, rng)
@@ -200,13 +327,20 @@ def run_simulations(
         playoff_teams = determine_playoff_teams(final_wins, teams_df)
         made_playoffs.append({team_id: team_id in playoff_teams for team_id in final_wins})
 
+        champions.append(simulate_playoff_bracket(final_wins, teams_df, pairwise_probs, rng))
+
     wins_df = pd.DataFrame(win_totals)
     playoffs_df = pd.DataFrame(made_playoffs)
+    champion_counts = pd.Series(champions).value_counts()
+    championship_pct = wins_df.columns.map(
+        lambda team_id: champion_counts.get(team_id, 0) / n_simulations
+    )
 
     return pd.DataFrame({
         "team_id": wins_df.columns,
         "avg_wins": wins_df.mean().values,
         "playoff_pct": playoffs_df.mean().values,
+        "championship_pct": championship_pct,
     })
 
 
@@ -222,13 +356,14 @@ def save_simulation_results(conn, results_df, season, n_simulations, batch_id=No
 
     sql = """
         INSERT INTO season_simulations (season, team_id, batch_id, num_simulations,
-                                         avg_wins, playoff_pct)
+                                         avg_wins, playoff_pct, championship_pct)
         VALUES (%(season)s, %(team_id)s, %(batch_id)s, %(num_simulations)s,
-                %(avg_wins)s, %(playoff_pct)s)
+                %(avg_wins)s, %(playoff_pct)s, %(championship_pct)s)
         ON CONFLICT (season, team_id, batch_id) DO UPDATE SET
             num_simulations = EXCLUDED.num_simulations,
             avg_wins = EXCLUDED.avg_wins,
-            playoff_pct = EXCLUDED.playoff_pct
+            playoff_pct = EXCLUDED.playoff_pct,
+            championship_pct = EXCLUDED.championship_pct
     """
     records = [
         {
@@ -238,6 +373,7 @@ def save_simulation_results(conn, results_df, season, n_simulations, batch_id=No
             "num_simulations": n_simulations,
             "avg_wins": float(row.avg_wins),
             "playoff_pct": float(row.playoff_pct),
+            "championship_pct": float(row.championship_pct),
         }
         for row in results_df.itertuples()
     ]
@@ -262,11 +398,15 @@ def main():
     played = load_played_games(conn, args.season, args.cutoff_date)
     remaining = load_remaining_games(conn, args.season, args.cutoff_date)
     current_wins = compute_current_standings(played)
-    win_probs = get_win_probabilities(conn, args.season, args.cutoff_date)
+    win_probs, model, scaler, fills = get_win_probabilities(conn, args.season, args.cutoff_date)
     teams_df = pd.read_sql("SELECT team_id, conference FROM teams", conn)
 
+    snapshot = load_team_snapshot_features(conn, args.season)
+    pairwise_probs = compute_pairwise_win_probs(teams_df["team_id"], snapshot, model, scaler, fills)
+
     results = run_simulations(
-        current_wins, remaining, win_probs, teams_df, n_simulations=args.n_simulations
+        current_wins, remaining, win_probs, teams_df, pairwise_probs,
+        n_simulations=args.n_simulations,
     )
     batch_id = save_simulation_results(conn, results, args.season, args.n_simulations)
 

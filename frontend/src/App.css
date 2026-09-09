@@ -1,0 +1,190 @@
+:root {
+  color-scheme: dark;
+  --bg: #14161b;
+  --panel: #1c1f26;
+  --border: #2b2f38;
+  --text: #eceef1;
+  --text-muted: #a3aab5;
+  --accent: #e07a3d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+
+.app {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.app-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.season-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.season-selector select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.95rem;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.season-label {
+  color: var(--text-muted);
+  margin: 0.25rem 0 0;
+}
+
+.error {
+  color: #e08272;
+}
+
+.loading {
+  color: var(--text-muted);
+}
+
+section {
+  margin-bottom: 2.5rem;
+}
+
+section h2 {
+  font-size: 1.1rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.standings-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 600px) {
+  .standings-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.standings-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.standings-table caption {
+  caption-side: top;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.standings-table th,
+.standings-table td {
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+.standings-table th {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.8rem;
+}
+
+.standings-table td:not(:first-child),
+.standings-table th:not(:first-child) {
+  text-align: right;
+}
+
+.standings-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.playoff-odds-subtitle {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: -0.5rem;
+}
+
+.playoff-odds-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.playoff-odds-row {
+  display: grid;
+  grid-template-columns: 10rem 1fr 3rem 5rem 6rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+}
+
+.champ-pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+.team-name {
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.odds-bar-track {
+  background: var(--border);
+  border-radius: 4px;
+  height: 0.6rem;
+  overflow: hidden;
+}
+
+.odds-bar-fill {
+  background: var(--accent);
+  height: 100%;
+}
+
+.odds-pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.avg-wins {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-align: right;
+}
