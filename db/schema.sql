@@ -147,3 +147,66 @@ CREATE TABLE season_simulations (
 );
 
 CREATE INDEX idx_season_sims_batch ON season_simulations(batch_id);
+
+-- Per-player full-season aggregates, sourced from leaguedashplayerstats (one
+-- row per player per season, already combined across teams if traded) rather
+-- than summed from player_game_stats — cheap to backfill many historical
+-- seasons for award modeling without needing game-by-game data for each one.
+CREATE TABLE player_season_stats (
+    id            BIGSERIAL PRIMARY KEY,
+    player_id     INTEGER NOT NULL REFERENCES players(player_id),
+    season        TEXT NOT NULL,
+    team_id       INTEGER REFERENCES teams(team_id),
+    games_played  INTEGER,
+    minutes       NUMERIC(7,2),
+    points        NUMERIC(7,2),
+    rebounds      NUMERIC(6,2),
+    assists       NUMERIC(6,2),
+    steals        NUMERIC(6,2),
+    blocks        NUMERIC(6,2),
+    turnovers     NUMERIC(6,2),
+    fg_pct        NUMERIC(5,4),
+    fg3_pct       NUMERIC(5,4),
+    ft_pct        NUMERIC(5,4),
+    plus_minus    NUMERIC(7,2),
+    UNIQUE (player_id, season)
+);
+
+CREATE INDEX idx_player_season_stats_season ON player_season_stats(season);
+
+-- Team win/loss record per season, sourced from leaguestandingsv3 — same
+-- cheap-backfill rationale as player_season_stats: award models need a
+-- team's win% as a feature, not its full game log.
+CREATE TABLE team_season_standings (
+    id       BIGSERIAL PRIMARY KEY,
+    team_id  INTEGER NOT NULL REFERENCES teams(team_id),
+    season   TEXT NOT NULL,
+    wins     INTEGER NOT NULL,
+    losses   INTEGER NOT NULL,
+    win_pct  NUMERIC(5,4) NOT NULL,
+    UNIQUE (team_id, season)
+);
+
+-- Ground truth award winners, sourced from playerawards (career awards list
+-- per player — binary "won" fact only, no vote share/points; NBA.com doesn't
+-- expose the underlying voting breakdown through this endpoint).
+CREATE TABLE player_awards (
+    id          BIGSERIAL PRIMARY KEY,
+    player_id   INTEGER NOT NULL REFERENCES players(player_id),
+    season      TEXT NOT NULL,
+    award_type  TEXT NOT NULL,  -- 'mvp' | 'dpoy' | 'roy' | 'sixth_moy' | 'mip'
+    UNIQUE (season, award_type)
+);
+
+-- Model-predicted win probability per candidate player, keyed by
+-- model_version like game_predictions.
+CREATE TABLE award_predictions (
+    id              BIGSERIAL PRIMARY KEY,
+    season          TEXT NOT NULL,
+    award_type      TEXT NOT NULL,
+    player_id       INTEGER NOT NULL REFERENCES players(player_id),
+    model_version   TEXT NOT NULL,
+    predicted_prob  NUMERIC(6,5),
+    predicted_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (season, award_type, player_id, model_version)
+);
