@@ -32,6 +32,7 @@ AWARD_LABELS = {
     "mvp": "NBA Most Valuable Player",
     "dpoy": "NBA Defensive Player of the Year",
     "roy": "NBA Rookie of the Year",
+    "mip": "NBA Most Improved Player",
 }
 
 CANDIDATE_HEURISTICS = {
@@ -192,6 +193,41 @@ def build_roy_candidates(conn, seasons):
     return candidates
 
 
+def build_mip_candidates(conn, seasons):
+    """MIP is about year-over-year improvement, not absolute level — ranks
+    each season's players by points-per-game increase over their immediately
+    preceding season in our data (LAG, partitioned by player). Requires
+    enough buffer seasons pulled before the modeling range that every
+    season's players actually have a prior season to compare against;
+    anyone without one (true rookies, or a gap in our data) is excluded
+    rather than treated as a 0-to-something "improvement".
+    """
+    sql = """
+        WITH with_prior AS (
+            SELECT player_id, season, games_played, points,
+                   LAG(season) OVER w AS prior_season,
+                   LAG(points) OVER w AS prior_points,
+                   LAG(games_played) OVER w AS prior_games_played
+            FROM player_season_stats
+            WINDOW w AS (PARTITION BY player_id ORDER BY season)
+        )
+        SELECT player_id, season,
+               (points::float / NULLIF(games_played, 0))
+                   - (prior_points::float / NULLIF(prior_games_played, 0)) AS ppg_delta
+        FROM with_prior
+        WHERE season = ANY(%(seasons)s)
+          AND prior_season IS NOT NULL
+          AND substring(season, 1, 4)::int - substring(prior_season, 1, 4)::int = 1
+    """
+    df = pd.read_sql(sql, conn, params={"seasons": seasons})
+
+    candidates = set()
+    for _, group in df.groupby("season"):
+        most_improved = group.sort_values("ppg_delta", ascending=False).head(CANDIDATES_PER_SEASON)
+        candidates.update(int(pid) for pid in most_improved["player_id"])
+    return candidates
+
+
 def upsert_award(conn, player_id, season, award_type):
     sql = """
         INSERT INTO player_awards (player_id, season, award_type)
@@ -253,6 +289,8 @@ def main():
 
     if "roy" in awards:
         candidate_player_ids.update(build_roy_candidates(conn, seasons))
+    if "mip" in awards:
+        candidate_player_ids.update(build_mip_candidates(conn, seasons))
 
     print(f"Checking award history for {len(candidate_player_ids)} candidate players...")
     for player_id in candidate_player_ids:

@@ -88,8 +88,8 @@ def load_candidate_pool(conn, seasons, award_type, rank_by, rookies_only=False):
     return df
 
 
-def train_model(train_df):
-    X_train = train_df[FEATURE_COLUMNS].astype(float)
+def train_model(train_df, feature_columns=FEATURE_COLUMNS):
+    X_train = train_df[feature_columns].astype(float)
     y_train = train_df["is_winner"]
 
     scaler = StandardScaler()
@@ -100,13 +100,13 @@ def train_model(train_df):
     return model, scaler
 
 
-def evaluate(model, scaler, test_df):
+def evaluate(model, scaler, test_df, feature_columns=FEATURE_COLUMNS):
     """The metric that actually matters here: per season, is the model's
     #1-ranked candidate the real winner? Raw accuracy/log loss are easy to
     game with this much class imbalance even after the shortlist, so
     top-1-per-season is the headline number.
     """
-    X_test = test_df[FEATURE_COLUMNS].astype(float)
+    X_test = test_df[feature_columns].astype(float)
     probs = model.predict_proba(scaler.transform(X_test))[:, 1]
     test_df = test_df.assign(predicted_prob=probs)
 
@@ -145,13 +145,22 @@ def save_predictions(conn, test_df, award_type, model_version):
 
 
 def run(award_type, rank_by, model_version, start_season, end_season, test_seasons,
-        rookies_only=False):
+        rookies_only=False, feature_columns=FEATURE_COLUMNS, load_fn=None):
+    """load_fn, if given, replaces load_candidate_pool(conn, seasons, award_type,
+    rank_by, rookies_only=rookies_only) — for awards like MIP whose candidate
+    pool isn't "top N by some stat this season" but needs its own cross-season
+    query. Must return a DataFrame with `season`, `player_id`, `is_winner`,
+    and every column in `feature_columns`.
+    """
     start_year = int(start_season[:4])
     end_year = int(end_season[:4])
     seasons = [f"{y}-{str(y + 1)[2:]}" for y in range(start_year, end_year + 1)]
 
     conn = get_db_connection()
-    df = load_candidate_pool(conn, seasons, award_type, rank_by, rookies_only=rookies_only)
+    if load_fn:
+        df = load_fn(conn, seasons, award_type)
+    else:
+        df = load_candidate_pool(conn, seasons, award_type, rank_by, rookies_only=rookies_only)
 
     train_seasons = seasons[:-test_seasons]
     eval_seasons = seasons[-test_seasons:]
@@ -163,8 +172,8 @@ def run(award_type, rank_by, model_version, start_season, end_season, test_seaso
     print(f"Train rows: {len(train_df)} ({train_df['is_winner'].sum()} winners)")
     print(f"Test rows:  {len(test_df)} ({test_df['is_winner'].sum()} winners)\n")
 
-    model, scaler = train_model(train_df)
-    scored_test_df = evaluate(model, scaler, test_df)
+    model, scaler = train_model(train_df, feature_columns=feature_columns)
+    scored_test_df = evaluate(model, scaler, test_df, feature_columns=feature_columns)
     save_predictions(conn, scored_test_df, award_type, model_version)
 
     conn.close()
