@@ -54,6 +54,7 @@ def load_played_games(conn, season, cutoff_date):
         SELECT game_id, game_date, home_team_id, away_team_id, home_score, away_score
         FROM games
         WHERE season = %(season)s AND game_date < %(cutoff_date)s
+        ORDER BY game_date, game_id
     """
     df = pd.read_sql(sql, conn, params={"season": season, "cutoff_date": cutoff_date})
     df["game_date"] = pd.to_datetime(df["game_date"])
@@ -71,6 +72,9 @@ def load_remaining_games(conn, season, cutoff_date):
         SELECT game_id, home_team_id, away_team_id
         FROM games
         WHERE season = %(season)s AND game_date >= %(cutoff_date)s
+        -- Each game is paired with one random draw by row position, so a fixed order
+        -- is what makes a seeded run repeatable.
+        ORDER BY game_date, game_id
     """
     return pd.read_sql(sql, conn, params={"season": season, "cutoff_date": cutoff_date})
 
@@ -484,7 +488,7 @@ def main():
     remaining = load_remaining_games(conn, args.season, args.cutoff_date)
     current_wins = compute_current_standings(played)
     win_probs, model, scaler, fills = get_win_probabilities(conn, args.season, args.cutoff_date)
-    teams_df = pd.read_sql("SELECT team_id, conference FROM teams", conn)
+    teams_df = pd.read_sql("SELECT team_id, conference FROM teams ORDER BY team_id", conn)
 
     snapshot = load_team_snapshot_features(conn, args.season, args.cutoff_date)
     pairwise_probs = compute_pairwise_win_probs(teams_df["team_id"], snapshot, model, scaler, fills)
