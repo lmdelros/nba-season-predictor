@@ -27,6 +27,7 @@ RATING_COLUMNS = [
 ]
 REST_COLUMNS = ["home_rest_days", "away_rest_days"]
 B2B_COLUMNS = ["home_is_back_to_back", "away_is_back_to_back"]
+MARGIN_COLUMNS = ["home_season_avg_margin", "away_season_avg_margin"]
 
 
 def get_db_connection():
@@ -88,6 +89,9 @@ def fit_imputer(train_df):
     fills.update({col: train_df[col].mean() for col in RATING_COLUMNS})
     fills.update({col: train_df[col].median() for col in REST_COLUMNS})
     fills.update({col: 0 for col in B2B_COLUMNS})
+    # A team's first game of a season has no margin yet. 0 is the league average by
+    # definition (every game's two margins cancel), so it is a neutral prior.
+    fills.update({col: 0.0 for col in MARGIN_COLUMNS if col in train_df})
     return fills
 
 
@@ -98,8 +102,8 @@ def apply_imputer(df, fills):
     return df
 
 
-def train_model(train_df):
-    X_train = train_df[FEATURE_COLUMNS].astype(float)
+def train_model(train_df, columns=FEATURE_COLUMNS):
+    X_train = train_df[columns].astype(float)
     y_train = train_df["home_win"]
 
     scaler = StandardScaler()
