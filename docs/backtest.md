@@ -7,6 +7,6 @@ Pretend it is 2026-02-01: 729 games are already played and 501 remain. The simul
 | Method | Rank correlation | Mean abs. error (wins) | Bias (wins) |
 |---|---|---|---|
 | Keep cutoff win % for all 82 games | 0.943 | 3.54 | +0.03 |
-| Monte Carlo simulation (this project) | 0.921 | 4.76 | -0.00 |
+| Monte Carlo simulation (this project) | 0.924 | 4.75 | -0.00 |
 
 Playoff teams given a 50%+ chance by the simulation: 13 of the 16 real playoff teams (top 8 per conference by wins; the play-in tournament is not modeled).
