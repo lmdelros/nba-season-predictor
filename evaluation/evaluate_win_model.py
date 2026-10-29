@@ -6,10 +6,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
 
 from models.train_win_probability import (
     FEATURE_COLUMNS,
+    ORIGINAL_FEATURE_COLUMNS,
     apply_imputer,
     fit_imputer,
     get_db_connection,
@@ -80,16 +82,35 @@ def better_record_baseline(train_df, test_df):
     return np.array([rates.get(edge, fallback) for edge in record_edge(test_df)])
 
 
-def logistic_model(train_df, test_df):
+def logistic_model(train_df, test_df, columns=FEATURE_COLUMNS):
     fills = fit_imputer(train_df)
-    model, scaler = train_model(apply_imputer(train_df, fills))
-    X_test = apply_imputer(test_df, fills)[FEATURE_COLUMNS].astype(float)
+    model, scaler = train_model(apply_imputer(train_df, fills), columns)
+    X_test = apply_imputer(test_df, fills)[columns].astype(float)
     return model.predict_proba(scaler.transform(X_test))[:, 1]
+
+
+def original_logistic_model(train_df, test_df):
+    """The same logistic regression on the model's original 13 features, for comparison."""
+    return logistic_model(train_df, test_df, ORIGINAL_FEATURE_COLUMNS)
+
+
+def gradient_boosting_model(train_df, test_df):
+    """Gradient-boosted trees on the same features and imputation as the logistic model.
+    scikit-learn's default settings are used as-is: tuning them would need a validation
+    split, and tuning on the test season would make its score meaningless."""
+    fills = fit_imputer(train_df)
+    model = HistGradientBoostingClassifier(random_state=0).fit(
+        apply_imputer(train_df, fills)[FEATURE_COLUMNS].astype(float), train_df["home_win"]
+    )
+    X_test = apply_imputer(test_df, fills)[FEATURE_COLUMNS].astype(float)
+    return model.predict_proba(X_test)[:, 1]
 
 
 METHODS = {
     "Home team always wins": home_team_baseline,
     "Better record so far wins": better_record_baseline,
+    "Logistic regression, original 13 features": original_logistic_model,
+    "Gradient boosting, same features": gradient_boosting_model,
     "Logistic regression (this project)": logistic_model,
 }
 
@@ -131,16 +152,21 @@ def to_markdown(title, description, train_df, test_df, results):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--train-season", default="2024-25")
+    parser.add_argument(
+        "--train-seasons", default="2021-22,2022-23,2023-24,2024-25",
+        help="comma-separated; the last one is also used for the one-season comparisons",
+    )
     parser.add_argument("--test-season", default="2025-26")
     parser.add_argument("--test-frac", type=float, default=0.2)
     parser.add_argument("--output", help="optional Markdown file to write the results to")
     args = parser.parse_args()
 
+    train_seasons = args.train_seasons.split(",")
     conn = get_db_connection()
-    train_season = load_season(conn, args.train_season)
-    test_season = load_season(conn, args.test_season)
+    by_season = {s: load_season(conn, s) for s in [*train_seasons, args.test_season]}
     conn.close()
+    train_all = pd.concat([by_season[s] for s in train_seasons], ignore_index=True)
+    last_train, test_season = by_season[train_seasons[-1]], by_season[args.test_season]
 
     sections = [
         "## Win-probability model vs. baselines\n\n"
@@ -149,18 +175,28 @@ def main():
         "score measure probability quality, and lower is better for both."
     ]
 
-    results = evaluate_split(train_season, test_season)
+    results = evaluate_split(train_all, test_season)
     sections.append(to_markdown(
-        f"Across seasons: train {args.train_season}, test {args.test_season} (headline)",
-        f"The model is trained on every {args.train_season} game and scored on every "
-        f"{args.test_season} game it never saw.",
-        train_season, test_season, results,
+        f"Across seasons: train {train_seasons[0]} to {train_seasons[-1]}, "
+        f"test {args.test_season} (headline)",
+        f"Every method is trained on all {len(train_seasons)} training seasons and scored on "
+        f"every {args.test_season} game, none of which it saw.",
+        train_all, test_season, results,
     ))
 
-    within_train, within_test = time_ordered_split(train_season, args.test_frac)
+    results = evaluate_split(last_train, test_season)
+    sections.append(to_markdown(
+        f"Across seasons, one training season: train {train_seasons[-1]}, "
+        f"test {args.test_season}",
+        "The same comparison with a single training season, to separate the effect of "
+        "more training data from the effect of the features.",
+        last_train, test_season, results,
+    ))
+
+    within_train, within_test = time_ordered_split(last_train, args.test_frac)
     results = evaluate_split(within_train, within_test)
     sections.append(to_markdown(
-        f"Within one season: {args.train_season}, last {args.test_frac:.0%} of dates held out",
+        f"Within one season: {train_seasons[-1]}, last {args.test_frac:.0%} of dates held out",
         "Same split as `models/train_win_probability.py`.",
         within_train, within_test, results,
     ))
