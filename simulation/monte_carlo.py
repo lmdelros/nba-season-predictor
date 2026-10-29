@@ -177,13 +177,17 @@ def freeze_remaining_features(remaining, snapshot, h2h):
     return remaining
 
 
-def predict_remaining(games, team_features, cutoff):
+def predict_remaining(games, team_features, cutoff, history=None):
     """Trains a fresh logistic regression on games strictly before the cutoff and
     predicts home-win probability for every game on/after it, using only
     information available at the cutoff. Pure (no database), so it can be
     leakage-tested.
 
-    games: load_training_data() output. team_features: load_team_features() output.
+    games: load_training_data() output for the simulated season.
+    team_features: load_team_features() output for the same season.
+    history: optional load_training_data() rows from earlier, fully completed
+    seasons, added to the training rows. They were all played before the
+    cutoff, so they are known information.
     Return: (dict of {game_id: home_win_probability}, model, scaler, fills).
     """
     cutoff = pd.Timestamp(cutoff)
@@ -191,8 +195,11 @@ def predict_remaining(games, team_features, cutoff):
     remaining_df = freeze_remaining_features(
         games[games["game_date"] >= cutoff],
         cutoff_snapshot(team_features, cutoff),
+        # Head-to-head is a this-season feature, so it uses this season's games only.
         head_to_head_before(train_df),
     )
+    if history is not None:
+        train_df = pd.concat([history, train_df], ignore_index=True)
 
     fills = fit_imputer(train_df)
     train_df = apply_imputer(train_df, fills)
@@ -209,8 +216,20 @@ def predict_remaining(games, team_features, cutoff):
     return dict(zip(remaining_df["game_id"], probs)), model, scaler, fills
 
 
-def get_win_probabilities(conn, season, cutoff_date):
+def load_earlier_seasons(conn, season):
+    """Every season in the games table before this one, oldest first."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT DISTINCT season FROM games WHERE season < %(season)s ORDER BY season",
+            {"season": season},
+        )
+        return [row[0] for row in cur.fetchall()]
+
+
+def get_win_probabilities(conn, season, cutoff_date, use_history=True):
     """Loads the season from the database and runs predict_remaining() at the cutoff.
+    With use_history, every earlier season in the database is added to the training
+    rows; without it, the model learns only from this season's games before the cutoff.
 
     Deliberately NOT reusing game_predictions here: that table only holds
     whatever train_win_probability.py's own held-out test split happened to
@@ -224,8 +243,14 @@ def get_win_probabilities(conn, season, cutoff_date):
 
     Return: (dict of {game_id: home_win_probability}, model, scaler, fills).
     """
+    earlier = load_earlier_seasons(conn, season) if use_history else []
+    history = (
+        pd.concat([load_training_data(conn, s) for s in earlier], ignore_index=True)
+        if earlier else None
+    )
     return predict_remaining(
-        load_training_data(conn, season), load_team_features(conn, season), cutoff_date
+        load_training_data(conn, season), load_team_features(conn, season), cutoff_date,
+        history,
     )
 
 
@@ -480,6 +505,10 @@ def main():
         help="YYYY-MM-DD; games before this are 'already played', on/after are simulated",
     )
     parser.add_argument("--n-simulations", type=int, default=10000)
+    parser.add_argument(
+        "--no-history", action="store_true",
+        help="train only on this season's games before the cutoff, not earlier seasons",
+    )
     args = parser.parse_args()
 
     conn = get_db_connection()
@@ -487,7 +516,9 @@ def main():
     played = load_played_games(conn, args.season, args.cutoff_date)
     remaining = load_remaining_games(conn, args.season, args.cutoff_date)
     current_wins = compute_current_standings(played)
-    win_probs, model, scaler, fills = get_win_probabilities(conn, args.season, args.cutoff_date)
+    win_probs, model, scaler, fills = get_win_probabilities(
+        conn, args.season, args.cutoff_date, use_history=not args.no_history
+    )
     teams_df = pd.read_sql("SELECT team_id, conference FROM teams ORDER BY team_id", conn)
 
     snapshot = load_team_snapshot_features(conn, args.season, args.cutoff_date)
