@@ -10,7 +10,9 @@ services:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Init scripts run once, on an empty volume, in alphabetical order: tables, then views.
       - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - ./db/views.sql:/docker-entrypoint-initdb.d/views.sql
 
 volumes:
   pgdata:
