@@ -12,8 +12,8 @@ import pandas as pd
 from evaluation.evaluate_win_model import score
 from models.train_win_probability import (
     B2B_COLUMNS,
-    FEATURE_COLUMNS,
     MARGIN_COLUMNS,
+    ORIGINAL_FEATURE_COLUMNS,
     REST_COLUMNS,
     apply_imputer,
     fit_imputer,
@@ -24,8 +24,8 @@ from models.train_win_probability import (
 
 SEASONS = ["2021-22", "2022-23", "2023-24", "2024-25"]
 CANDIDATES = {
-    "A: current 13 features": FEATURE_COLUMNS,
-    "B: current 13 + season margin": FEATURE_COLUMNS + MARGIN_COLUMNS,
+    "A: current 13 features": ORIGINAL_FEATURE_COLUMNS,
+    "B: current 13 + season margin": ORIGINAL_FEATURE_COLUMNS + MARGIN_COLUMNS,
     "C: season margin only": MARGIN_COLUMNS,
     "D: season margin + rest/back-to-back": MARGIN_COLUMNS + REST_COLUMNS + B2B_COLUMNS,
 }

@@ -40,12 +40,15 @@ def _synthetic_games(n_games=1200, seed=0):
         "home_h2h_win_pct_season": rng.uniform(0.2, 0.8, n_games),
         "home_season_win_pct_home": rng.uniform(0.3, 0.8, n_games),
         "away_season_win_pct_away": rng.uniform(0.2, 0.7, n_games),
+        "home_season_avg_margin": rng.normal(0, 5, n_games),
+        "away_season_avg_margin": rng.normal(0, 5, n_games),
     })
 
-    net_rating_edge = (home_off - home_def) - (away_off - away_def)
+    # The signal runs through the model's features: season margin and back-to-backs.
     logit = (
-        4.0 * (df["home_rolling_win_pct_l10"] - df["away_rolling_win_pct_l10"])
-        + 0.05 * net_rating_edge
+        0.25 * (df["home_season_avg_margin"] - df["away_season_avg_margin"])
+        - 0.4 * df["home_is_back_to_back"]
+        + 0.4 * df["away_is_back_to_back"]
         + 0.3  # home-court edge
     )
     win_prob = 1 / (1 + np.exp(-logit))

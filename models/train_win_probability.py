@@ -8,7 +8,9 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
 from sklearn.preprocessing import StandardScaler
 
-FEATURE_COLUMNS = [
+# The model's original 13 features. The win model no longer uses them (see
+# FEATURE_COLUMNS below); the margin model and the evaluation's comparison row still do.
+ORIGINAL_FEATURE_COLUMNS = [
     "home_rolling_win_pct_l10", "away_rolling_win_pct_l10",
     "home_rolling_off_rating", "home_rolling_def_rating",
     "away_rolling_off_rating", "away_rolling_def_rating",
@@ -28,6 +30,10 @@ RATING_COLUMNS = [
 REST_COLUMNS = ["home_rest_days", "away_rest_days"]
 B2B_COLUMNS = ["home_is_back_to_back", "away_is_back_to_back"]
 MARGIN_COLUMNS = ["home_season_avg_margin", "away_season_avg_margin"]
+
+# Chosen by evaluation/select_features.py using only the 2021-22 to 2024-25 seasons
+# (see docs/feature_selection.md): season-to-date point margin plus the schedule.
+FEATURE_COLUMNS = MARGIN_COLUMNS + REST_COLUMNS + B2B_COLUMNS
 
 
 def get_db_connection():
@@ -137,7 +143,7 @@ def evaluate(model, scaler, test_df):
     return probs
 
 
-def save_predictions(conn, test_df, probs, model_version="logreg_v1"):
+def save_predictions(conn, test_df, probs, model_version="logreg_v2"):
     sql = """
         INSERT INTO game_predictions (game_id, model_version, model_type, predicted_home_win_prob)
         VALUES (%(game_id)s, %(model_version)s, 'win_probability', %(prob)s)

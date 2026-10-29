@@ -7,13 +7,17 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.preprocessing import StandardScaler
 
 from models.train_win_probability import (
-    FEATURE_COLUMNS,
+    ORIGINAL_FEATURE_COLUMNS,
     apply_imputer,
     fit_imputer,
     get_db_connection,
     load_training_data,
     time_ordered_split,
 )
+
+# Kept on the original 13 features when the win model switched to a smaller set; the
+# margin model has not been re-evaluated with the new features.
+FEATURE_COLUMNS = ORIGINAL_FEATURE_COLUMNS
 
 
 def train_model(train_df):

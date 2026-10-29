@@ -1,7 +1,11 @@
 import pandas as pd
 
 from features.build_features import compute_team_game_features
-from models.train_win_probability import FEATURE_COLUMNS
+from models.train_win_probability import (
+    FEATURE_COLUMNS,
+    MARGIN_COLUMNS,
+    ORIGINAL_FEATURE_COLUMNS,
+)
 from simulation.monte_carlo import (
     SNAPSHOT_COLUMNS,
     cutoff_snapshot,
@@ -29,7 +33,8 @@ def _season_inputs(games, box):
         "away": features[~features["is_home"]].set_index("game_id"),
     }
     wide = games.set_index("game_id")
-    for col in [*FEATURE_COLUMNS, "home_season_avg_margin", "away_season_avg_margin"]:
+    # Every column load_training_data() returns, not only the ones the model uses.
+    for col in [*ORIGINAL_FEATURE_COLUMNS, *MARGIN_COLUMNS]:
         side, feature = col.split("_", 1)
         wide[col] = sides[side][feature]
     for col in ("home_is_back_to_back", "away_is_back_to_back"):
