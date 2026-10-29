@@ -9,6 +9,27 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # A throwaway Postgres for the database tests in tests/test_db_views.py.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: nba
+          POSTGRES_PASSWORD: nba
+          POSTGRES_DB: nba_predictor
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nba -d nba_predictor"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      PGPASSWORD: nba
+      # Database tests skip when no database is reachable; in CI that must be a failure.
+      REQUIRE_DB: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -24,6 +45,11 @@ jobs:
 
       - name: Lint
         run: ruff check .
+
+      - name: Load schema and views
+        run: |
+          psql -v ON_ERROR_STOP=1 -h localhost -U nba -d nba_predictor -f db/schema.sql
+          psql -v ON_ERROR_STOP=1 -h localhost -U nba -d nba_predictor -f db/views.sql
 
       - name: Run tests
         run: python -m pytest
