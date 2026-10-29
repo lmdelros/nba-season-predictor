@@ -67,6 +67,31 @@ def test_predictions_ignore_results_on_or_after_cutoff():
     )
 
 
+def _history_season():
+    """A completed synthetic season one year earlier, with its own game IDs."""
+    games = _games(seed=7)
+    games["season"] = "2023-24"
+    games["game_date"] -= pd.DateOffset(years=1)
+    games["game_id"] += 100_000
+    history, _ = _season_inputs(games, _box(_team_games(games), seed=8))
+    return history
+
+
+def test_predictions_with_history_ignore_results_on_or_after_cutoff():
+    original_season, changed_season, cutoff = _rescored_season()
+    original_games, original_features = _season_inputs(*original_season)
+    changed_games, changed_features = _season_inputs(*changed_season)
+    history = _history_season()
+
+    original_probs, *_ = predict_remaining(original_games, original_features, cutoff, history)
+    changed_probs, *_ = predict_remaining(changed_games, changed_features, cutoff, history)
+    without_history, *_ = predict_remaining(original_games, original_features, cutoff)
+
+    assert original_probs == changed_probs
+    # Sanity check: the history is really used, so this test is not a copy of the one above.
+    assert original_probs != without_history
+
+
 def test_playoff_snapshot_ignores_results_on_or_after_cutoff():
     original_season, changed_season, cutoff = _rescored_season()
     _, original_features = _season_inputs(*original_season)
