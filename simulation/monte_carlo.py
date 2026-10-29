@@ -100,18 +100,21 @@ def compute_current_standings(played_games):
 # the season, so using their scheduled values does not leak results.
 SNAPSHOT_COLUMNS = [
     "rolling_win_pct_l10", "rolling_off_rating", "rolling_def_rating",
-    "season_win_pct_home", "season_win_pct_away",
+    "season_win_pct_home", "season_win_pct_away", "season_avg_margin",
 ]
 
 
 def load_team_features(conn, season):
     """Every team_game_features row for the season (one per team per game) with its
-    game date, so a snapshot can be taken as of any cutoff."""
+    game date and team_game_form margin, so a snapshot can be taken as of any cutoff."""
     sql = """
         SELECT tgf.team_id, g.game_date, tgf.rolling_win_pct_l10, tgf.rolling_off_rating,
-               tgf.rolling_def_rating, tgf.season_win_pct_home, tgf.season_win_pct_away
+               tgf.rolling_def_rating, tgf.season_win_pct_home, tgf.season_win_pct_away,
+               tgform.season_avg_margin
         FROM team_game_features tgf
         JOIN games g ON g.game_id = tgf.game_id
+        JOIN team_game_form tgform
+            ON tgform.game_id = tgf.game_id AND tgform.team_id = tgf.team_id
         WHERE g.season = %(season)s
     """
     df = pd.read_sql(sql, conn, params={"season": season})
@@ -154,7 +157,10 @@ def freeze_remaining_features(remaining, snapshot, h2h):
     remaining = remaining.copy()
     for side in ("home", "away"):
         form = snapshot.reindex(remaining[f"{side}_team_id"])
-        for col in ("rolling_win_pct_l10", "rolling_off_rating", "rolling_def_rating"):
+        for col in (
+            "rolling_win_pct_l10", "rolling_off_rating", "rolling_def_rating",
+            "season_avg_margin",
+        ):
             remaining[f"{side}_{col}"] = form[col].to_numpy()
     remaining["home_season_win_pct_home"] = (
         snapshot["season_win_pct_home"].reindex(remaining["home_team_id"]).to_numpy()
@@ -229,7 +235,7 @@ def load_team_snapshot_features(conn, season, cutoff_date):
 
 def build_matchup_features(home_id, away_id, snapshot, fills):
     """One FEATURE_COLUMNS-shaped row for a hypothetical game between two
-    teams' end-of-season form snapshots.
+    teams' form snapshots as of the cutoff date.
 
     Two fields are deliberately NOT taken from real data: head-to-head is set
     to a neutral 0.5 rather than reconstructed from their actual regular
@@ -254,6 +260,8 @@ def build_matchup_features(home_id, away_id, snapshot, fills):
         "home_h2h_win_pct_season": 0.5,
         "home_season_win_pct_home": home["season_win_pct_home"],
         "away_season_win_pct_away": away["season_win_pct_away"],
+        "home_season_avg_margin": home["season_avg_margin"],
+        "away_season_avg_margin": away["season_avg_margin"],
     }
 
 

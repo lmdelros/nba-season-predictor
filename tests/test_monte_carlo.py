@@ -16,6 +16,12 @@ def _season_inputs(games, box):
     """predict_remaining()'s two inputs, built from a synthetic season the same way
     load_training_data() and load_team_features() build them from the database."""
     features = compute_team_game_features(_team_games(games), box)
+    # Mirrors the team_game_form view in db/views.sql (rows are already in time order
+    # per team): average margin over the team's earlier games this season.
+    margin = features["points_for"] - features["points_against"]
+    features["season_avg_margin"] = margin.groupby(
+        [features["season"], features["team_id"]]
+    ).transform(lambda s: s.shift(1).expanding().mean())
     team_features = features[["team_id", "game_date", *SNAPSHOT_COLUMNS]]
 
     sides = {
@@ -23,7 +29,7 @@ def _season_inputs(games, box):
         "away": features[~features["is_home"]].set_index("game_id"),
     }
     wide = games.set_index("game_id")
-    for col in FEATURE_COLUMNS:
+    for col in [*FEATURE_COLUMNS, "home_season_avg_margin", "away_season_avg_margin"]:
         side, feature = col.split("_", 1)
         wide[col] = sides[side][feature]
     for col in ("home_is_back_to_back", "away_is_back_to_back"):
@@ -89,7 +95,7 @@ def test_freeze_keeps_scheduled_rest_days():
         "home_is_back_to_back": [0], "away_is_back_to_back": [1],
     })
     snapshot = pd.DataFrame(
-        [[0.6, 115.0, 108.0, 0.7, 0.5], [0.4, 110.0, 112.0, 0.5, 0.3]],
+        [[0.6, 115.0, 108.0, 0.7, 0.5, 4.5], [0.4, 110.0, 112.0, 0.5, 0.3, -2.0]],
         index=pd.Index([1, 2], name="team_id"), columns=SNAPSHOT_COLUMNS,
     )
     frozen = freeze_remaining_features(remaining, snapshot, head_to_head_before(
@@ -103,4 +109,5 @@ def test_freeze_keeps_scheduled_rest_days():
     assert row["away_rolling_def_rating"] == 112.0
     assert row["home_season_win_pct_home"] == 0.7
     assert row["away_season_win_pct_away"] == 0.3
+    assert (row["home_season_avg_margin"], row["away_season_avg_margin"]) == (4.5, -2.0)
     assert pd.isna(row["home_h2h_win_pct_season"])

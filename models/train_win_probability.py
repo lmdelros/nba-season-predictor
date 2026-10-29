@@ -55,10 +55,14 @@ def load_training_data(conn, season):
                af.rolling_def_rating AS away_rolling_def_rating,
                af.rest_days AS away_rest_days,
                af.is_back_to_back AS away_is_back_to_back,
-               af.season_win_pct_away AS away_season_win_pct_away
+               af.season_win_pct_away AS away_season_win_pct_away,
+               hm.season_avg_margin AS home_season_avg_margin,
+               am.season_avg_margin AS away_season_avg_margin
         FROM games g
         JOIN team_game_features hf ON hf.game_id = g.game_id AND hf.team_id = g.home_team_id
         JOIN team_game_features af ON af.game_id = g.game_id AND af.team_id = g.away_team_id
+        JOIN team_game_form hm ON hm.game_id = g.game_id AND hm.team_id = g.home_team_id
+        JOIN team_game_form am ON am.game_id = g.game_id AND am.team_id = g.away_team_id
         WHERE g.season = %(season)s
         ORDER BY g.game_date, g.game_id
     """
