@@ -57,7 +57,7 @@ def run_backtest(conn, season, cutoff_date, n_simulations, seed):
     current_wins = compute_current_standings(played)
     win_probs, model, scaler, fills = get_win_probabilities(conn, season, cutoff_date)
     teams_df = pd.read_sql("SELECT team_id, conference FROM teams", conn)
-    snapshot = load_team_snapshot_features(conn, season)
+    snapshot = load_team_snapshot_features(conn, season, cutoff_date)
     pairwise_probs = compute_pairwise_win_probs(
         teams_df["team_id"], snapshot, model, scaler, fills
     )

@@ -95,27 +95,94 @@ def compute_current_standings(played_games):
     return {team_id: int(wins.get(team_id, 0)) for team_id in all_teams}
 
 
-def get_win_probabilities(conn, season, cutoff_date):
-    """Trains a fresh logistic regression on this season's games strictly
-    before cutoff_date, then predicts home-win probability for every game
-    on/after it — i.e. exactly the games simulate_one_season() needs.
+# Results-based team features that must be frozen at the cutoff date. Rest days and
+# back-to-backs are not here: they come from the schedule, which is published before
+# the season, so using their scheduled values does not leak results.
+SNAPSHOT_COLUMNS = [
+    "rolling_win_pct_l10", "rolling_off_rating", "rolling_def_rating",
+    "season_win_pct_home", "season_win_pct_away",
+]
 
-    Deliberately NOT reusing game_predictions here: that table only holds
-    whatever train_win_probability.py's own held-out test split happened to
-    cover, which won't line up with an arbitrary --cutoff-date passed to this
-    script. Training fresh at this exact cutoff keeps train/predict strictly
-    time-ordered, matching the same no-leakage rule used everywhere else.
 
-    Also returns the fitted model/scaler/fills so the playoff bracket
-    simulation can score hypothetical matchups with the exact same model
-    instead of training a second one.
+def load_team_features(conn, season):
+    """Every team_game_features row for the season (one per team per game) with its
+    game date, so a snapshot can be taken as of any cutoff."""
+    sql = """
+        SELECT tgf.team_id, g.game_date, tgf.rolling_win_pct_l10, tgf.rolling_off_rating,
+               tgf.rolling_def_rating, tgf.season_win_pct_home, tgf.season_win_pct_away
+        FROM team_game_features tgf
+        JOIN games g ON g.game_id = tgf.game_id
+        WHERE g.season = %(season)s
+    """
+    df = pd.read_sql(sql, conn, params={"season": season})
+    df["game_date"] = pd.to_datetime(df["game_date"])
+    return df
 
+
+def cutoff_snapshot(team_features, cutoff):
+    """Each team's form as known on the cutoff date. A team's first feature row on or
+    after the cutoff was computed only from its earlier games, all of which were
+    played before the cutoff, so it is exactly what was known at that point.
+    """
+    after = team_features[team_features["game_date"] >= pd.Timestamp(cutoff)]
+    first = after.sort_values("game_date").groupby("team_id").head(1)
+    return first.set_index("team_id")[SNAPSHOT_COLUMNS]
+
+
+def head_to_head_before(played_games):
+    """Each team's win % against each opponent in already-played games, indexed by
+    (team_id, opp_id). Pairs that have not met are absent."""
+    home_won = played_games["home_score"] > played_games["away_score"]
+    long = pd.concat([
+        pd.DataFrame({
+            "team_id": played_games["home_team_id"], "opp_id": played_games["away_team_id"],
+            "win": home_won,
+        }),
+        pd.DataFrame({
+            "team_id": played_games["away_team_id"], "opp_id": played_games["home_team_id"],
+            "win": ~home_won,
+        }),
+    ])
+    return long.groupby(["team_id", "opp_id"])["win"].mean()
+
+
+def freeze_remaining_features(remaining, snapshot, h2h):
+    """Overwrites every results-based feature of not-yet-played games with what was
+    known at the cutoff: each team's snapshot form and the pre-cutoff head-to-head.
+    Scheduled rest days and back-to-backs are kept as they are.
+    """
+    remaining = remaining.copy()
+    for side in ("home", "away"):
+        form = snapshot.reindex(remaining[f"{side}_team_id"])
+        for col in ("rolling_win_pct_l10", "rolling_off_rating", "rolling_def_rating"):
+            remaining[f"{side}_{col}"] = form[col].to_numpy()
+    remaining["home_season_win_pct_home"] = (
+        snapshot["season_win_pct_home"].reindex(remaining["home_team_id"]).to_numpy()
+    )
+    remaining["away_season_win_pct_away"] = (
+        snapshot["season_win_pct_away"].reindex(remaining["away_team_id"]).to_numpy()
+    )
+    pairs = pd.MultiIndex.from_arrays([remaining["home_team_id"], remaining["away_team_id"]])
+    remaining["home_h2h_win_pct_season"] = h2h.reindex(pairs).to_numpy()
+    return remaining
+
+
+def predict_remaining(games, team_features, cutoff):
+    """Trains a fresh logistic regression on games strictly before the cutoff and
+    predicts home-win probability for every game on/after it, using only
+    information available at the cutoff. Pure (no database), so it can be
+    leakage-tested.
+
+    games: load_training_data() output. team_features: load_team_features() output.
     Return: (dict of {game_id: home_win_probability}, model, scaler, fills).
     """
-    df = load_training_data(conn, season)
-    cutoff = pd.Timestamp(cutoff_date)
-    train_df = df[df["game_date"] < cutoff].copy()
-    remaining_df = df[df["game_date"] >= cutoff].copy()
+    cutoff = pd.Timestamp(cutoff)
+    train_df = games[games["game_date"] < cutoff].copy()
+    remaining_df = freeze_remaining_features(
+        games[games["game_date"] >= cutoff],
+        cutoff_snapshot(team_features, cutoff),
+        head_to_head_before(train_df),
+    )
 
     fills = fit_imputer(train_df)
     train_df = apply_imputer(train_df, fills)
@@ -132,22 +199,32 @@ def get_win_probabilities(conn, season, cutoff_date):
     return dict(zip(remaining_df["game_id"], probs)), model, scaler, fills
 
 
-def load_team_snapshot_features(conn, season):
-    """Each team's most recent team_game_features row for the season — a
-    'current form' snapshot used to build hypothetical playoff matchups that
-    may not correspond to any single real game (or any game at all, if two
-    teams meeting in the Finals never played each other pre-cutoff).
+def get_win_probabilities(conn, season, cutoff_date):
+    """Loads the season from the database and runs predict_remaining() at the cutoff.
+
+    Deliberately NOT reusing game_predictions here: that table only holds
+    whatever train_win_probability.py's own held-out test split happened to
+    cover, which won't line up with an arbitrary --cutoff-date passed to this
+    script, and its features were built from each game's real prior results,
+    including results after the cutoff.
+
+    Also returns the fitted model/scaler/fills so the playoff bracket
+    simulation can score hypothetical matchups with the exact same model
+    instead of training a second one.
+
+    Return: (dict of {game_id: home_win_probability}, model, scaler, fills).
     """
-    sql = """
-        SELECT DISTINCT ON (tgf.team_id)
-            tgf.team_id, tgf.rolling_win_pct_l10, tgf.rolling_off_rating,
-            tgf.rolling_def_rating, tgf.season_win_pct_home, tgf.season_win_pct_away
-        FROM team_game_features tgf
-        JOIN games g ON g.game_id = tgf.game_id
-        WHERE g.season = %(season)s
-        ORDER BY tgf.team_id, g.game_date DESC
+    return predict_remaining(
+        load_training_data(conn, season), load_team_features(conn, season), cutoff_date
+    )
+
+
+def load_team_snapshot_features(conn, season, cutoff_date):
+    """Each team's form as of the cutoff, used to build hypothetical playoff
+    matchups that may not correspond to any single real game (or any game at
+    all, if two teams meeting in the Finals never played each other pre-cutoff).
     """
-    return pd.read_sql(sql, conn, params={"season": season}).set_index("team_id")
+    return cutoff_snapshot(load_team_features(conn, season), cutoff_date)
 
 
 def build_matchup_features(home_id, away_id, snapshot, fills):
@@ -401,7 +478,7 @@ def main():
     win_probs, model, scaler, fills = get_win_probabilities(conn, args.season, args.cutoff_date)
     teams_df = pd.read_sql("SELECT team_id, conference FROM teams", conn)
 
-    snapshot = load_team_snapshot_features(conn, args.season)
+    snapshot = load_team_snapshot_features(conn, args.season, args.cutoff_date)
     pairwise_probs = compute_pairwise_win_probs(teams_df["team_id"], snapshot, model, scaler, fills)
 
     results = run_simulations(

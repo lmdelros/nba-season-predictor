@@ -41,7 +41,8 @@ def get_db_connection():
 
 def load_training_data(conn, season):
     sql = """
-        SELECT g.game_id, g.game_date, g.home_score, g.away_score,
+        SELECT g.game_id, g.game_date, g.home_team_id, g.away_team_id,
+               g.home_score, g.away_score,
                hf.rolling_win_pct_l10 AS home_rolling_win_pct_l10,
                hf.rolling_off_rating AS home_rolling_off_rating,
                hf.rolling_def_rating AS home_rolling_def_rating,
