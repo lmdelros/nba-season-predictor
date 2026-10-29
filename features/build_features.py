@@ -107,10 +107,9 @@ def add_season_splits(df):
     return df
 
 
-def build_features(conn, season):
-    team_games = load_team_games(conn, season)
-    box = load_team_box_totals(conn, season)
-
+def compute_team_game_features(team_games, box):
+    """Per-team, per-game features from raw results and box totals, each computed only
+    from that team's earlier games. Pure (no database), so leakage can be unit-tested."""
     df = team_games.merge(box, on=["game_id", "team_id"], how="left")
     opp_box = box.rename(columns={
         "team_id": "opp_id", "fga": "opp_fga", "fta": "opp_fta",
@@ -149,7 +148,13 @@ def build_features(conn, season):
     h2h_group = df.groupby(["season", "team_id", "opp_id"])
     df["h2h_win_pct_season"] = h2h_group["win"].transform(lambda s: s.shift(1).expanding().mean())
 
-    df = add_season_splits(df)
+    return add_season_splits(df)
+
+
+def build_features(conn, season):
+    df = compute_team_game_features(
+        load_team_games(conn, season), load_team_box_totals(conn, season)
+    )
 
     clusters = load_player_clusters(conn, season)
     game_minutes = load_game_player_minutes(conn, season)
