@@ -1,53 +1,10 @@
 # Tests for the SQL views in db/views.sql, run against a real Postgres database.
 # Every test runs inside a transaction that is rolled back, with made-up team IDs and
 # seasons, so it never changes real data. Without a reachable database these tests
-# skip, unless REQUIRE_DB=1 (set in CI), which turns a missing database into a failure.
-import os
+# skip, unless REQUIRE_DB=1 (set in CI); see the db fixture in tests/conftest.py.
 from datetime import date, timedelta
 
-import psycopg2
-import pytest
-
-from models.train_win_probability import get_db_connection
-
-TEAMS = [9001, 9002, 9003, 9004]
-SEASON = "2099-00"
-
-
-@pytest.fixture
-def db():
-    try:
-        conn = get_db_connection()
-    except psycopg2.OperationalError as exc:
-        if os.environ.get("REQUIRE_DB") == "1":
-            raise
-        pytest.skip(f"no database reachable: {exc}")
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT to_regclass('team_game_form')")
-            assert cur.fetchone()[0] is not None, "team_game_form missing: apply db/views.sql"
-            cur.executemany(
-                "INSERT INTO teams (team_id, full_name, abbreviation, conference, division) "
-                "VALUES (%s, %s, %s, 'East', 'Test')",
-                [(t, f"Test Team {t}", f"T{t}") for t in TEAMS],
-            )
-        yield conn
-    finally:
-        conn.rollback()
-        conn.close()
-
-
-def _insert_games(conn, games):
-    """games: (game_id, season, game_date, home_id, away_id, home_score, away_score);
-    a game with NULL scores is inserted as scheduled rather than final."""
-    with conn.cursor() as cur:
-        cur.executemany(
-            "INSERT INTO games (game_id, season, season_type, game_date, home_team_id, "
-            "away_team_id, home_score, away_score, status) "
-            "VALUES (%s, %s, 'regular', %s, %s, %s, %s, %s, "
-            "CASE WHEN %s IS NULL THEN 'scheduled' ELSE 'final' END)",
-            [(*g, g[5]) for g in games],
-        )
+from tests.db_helpers import SEASON, TEAMS, insert_games
 
 
 def _margins(conn, team_id=None):
@@ -63,7 +20,7 @@ def _margins(conn, team_id=None):
 
 def test_margin_matches_hand_computed_values(db):
     day = date(2099, 10, 20)
-    _insert_games(db, [
+    insert_games(db, [
         (990001, SEASON, day, 9001, 9002, 110, 100),                       # 9001: +10
         (990002, SEASON, day + timedelta(1), 9002, 9001, 104, 100),        # 9001: -4
         (990003, SEASON, day + timedelta(2), 9001, 9002, 106, 100),        # 9001: +6
@@ -86,7 +43,7 @@ def test_margin_ignores_results_on_or_after_game_date(db):
             games.append((game_id, SEASON, day + timedelta(d), home, away,
                           100 + (game_id * 7) % 25, 100 + (game_id * 11) % 25))
             game_id += 1
-    _insert_games(db, games)
+    insert_games(db, games)
     cutoff = day + timedelta(5)
     known = {g[0] for g in games if g[2] <= cutoff}
 
@@ -107,7 +64,7 @@ def test_margin_ignores_results_on_or_after_game_date(db):
 
 def test_scheduled_games_do_not_count(db):
     day = date(2099, 10, 20)
-    _insert_games(db, [
+    insert_games(db, [
         (990201, SEASON, day, 9001, 9002, 110, 100),                       # 9001: +10
         (990202, SEASON, day + timedelta(1), 9001, 9002, None, None),      # not played
         (990203, SEASON, day + timedelta(2), 9001, 9002, 96, 100),         # 9001: -4
@@ -120,7 +77,7 @@ def test_scheduled_games_do_not_count(db):
 
 
 def test_margin_resets_each_season(db):
-    _insert_games(db, [
+    insert_games(db, [
         (990301, "2098-99", date(2099, 4, 10), 9001, 9002, 120, 100),
         (990302, SEASON, date(2099, 10, 20), 9001, 9002, 100, 95),
         (990303, SEASON, date(2099, 10, 22), 9001, 9002, 100, 95),
