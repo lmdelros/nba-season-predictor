@@ -33,5 +33,21 @@ services:
       -f /db/schema.sql -f /db/views.sql
     restart: "no"
 
+  # Pipeline scripts (ingestion, features, models, simulation) with the full Python
+  # dependencies. The "tools" profile keeps it out of "docker compose up"; run it on
+  # demand, and Compose starts Postgres and the migration first:
+  #   docker compose run --rm pipeline python -m scripts.seed_demo
+  pipeline:
+    build:
+      context: .
+      dockerfile: pipeline.Dockerfile
+    profiles: ["tools"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+
 volumes:
   pgdata:
