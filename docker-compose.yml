@@ -10,9 +10,28 @@ services:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # Init scripts run once, on an empty volume, in alphabetical order: tables, then views.
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
-      - ./db/views.sql:/docker-entrypoint-initdb.d/views.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nba -d nba_predictor"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  # Applies db/schema.sql and then db/views.sql on every start, then exits. Both files
+  # are safe to re-run, so this sets up a fresh database and brings an older one up to
+  # date (missing tables and views) without touching existing data.
+  migrate:
+    image: postgres:16
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: nba
+    volumes:
+      - ./db:/db:ro
+    command: >-
+      psql -v ON_ERROR_STOP=1 -h postgres -U nba -d nba_predictor
+      -f /db/schema.sql -f /db/views.sql
+    restart: "no"
 
 volumes:
   pgdata:

@@ -89,8 +89,25 @@ jobs:
       - name: Validate compose file
         run: docker compose config
 
-      - name: Start Postgres and apply schema
-        run: docker compose up -d --wait
+      # Only Postgres here: --wait counts a one-shot service that exits, like migrate,
+      # as a failure even when it succeeds.
+      - name: Start Postgres
+        run: docker compose up -d --wait postgres
+
+      # Twice, to prove that re-running the schema and views on an existing database works.
+      - name: Apply schema and views
+        run: |
+          docker compose run --rm migrate
+          docker compose run --rm migrate
+
+      - name: Check tables and views exist
+        run: |
+          tables=$(docker compose exec -T postgres psql -U nba -d nba_predictor -tAc \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")
+          views=$(docker compose exec -T postgres psql -U nba -d nba_predictor -tAc \
+            "SELECT count(*) FROM information_schema.views WHERE table_schema = 'public'")
+          echo "tables=$tables views=$views"
+          test "$tables" -eq 13 && test "$views" -eq 1
 
       - name: Tear down
         if: always()
