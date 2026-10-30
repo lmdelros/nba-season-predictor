@@ -1,10 +1,7 @@
-psycopg2-binary==2.9.12
+-r requirements-api.txt
 nba_api==1.11.4
 numpy==2.5.1
 pandas==3.0.3
 scikit-learn==1.9.0
 matplotlib==3.11.1
 streamlit==1.60.0
-fastapi==0.162.0
-pydantic==2.14.2
-uvicorn==0.51.0
