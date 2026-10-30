@@ -1,4 +1,16 @@
 export default function PlayoffOdds({ simulations }) {
+  // The API returns an empty list for seasons that no Monte Carlo run has covered.
+  if (simulations.length === 0) {
+    return (
+      <section className="playoff-odds">
+        <h2>Playoff Odds</h2>
+        <p className="playoff-odds-subtitle">
+          No simulation has been run for this season yet.
+        </p>
+      </section>
+    )
+  }
+
   return (
     <section className="playoff-odds">
       <h2>Playoff Odds</h2>
