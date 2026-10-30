@@ -89,16 +89,19 @@ jobs:
       - name: Validate compose file
         run: docker compose config
 
-      # Only Postgres here: --wait counts a one-shot service that exits, like migrate,
-      # as a failure even when it succeeds.
-      - name: Start Postgres
-        run: docker compose up -d --wait postgres
+      # Includes the pipeline image (tools profile), which "up" alone would skip.
+      - name: Build images
+        run: docker compose --profile tools build
 
-      # Twice, to prove that re-running the schema and views on an existing database works.
-      - name: Apply schema and views
-        run: |
-          docker compose run --rm migrate
-          docker compose run --rm migrate
+      # migrate runs and exits first; the API waits for it and web waits for a healthy
+      # API, so --wait returns once the whole stack is serving.
+      - name: Start the stack
+        run: docker compose up -d --wait
+
+      # Startup already applied the schema and views once; a second run proves that
+      # re-applying them to an existing database works.
+      - name: Re-apply schema and views
+        run: docker compose run --rm migrate
 
       - name: Check tables and views exist
         run: |
@@ -108,6 +111,21 @@ jobs:
             "SELECT count(*) FROM information_schema.views WHERE table_schema = 'public'")
           echo "tables=$tables views=$views"
           test "$tables" -eq 13 && test "$views" -eq 1
+
+      # Requests go browser-style through nginx on port 8080, so this checks the whole
+      # chain: nginx serves the app and forwards /api to FastAPI, which queries Postgres.
+      # The database is empty here (CI cannot download NBA data), so /seasons is [].
+      - name: Smoke-test the app through nginx
+        run: |
+          curl -fsS http://localhost:8080/ | grep -q '<div id="root">'
+          curl -fsS http://localhost:8080/some/client/route | grep -q '<div id="root">'
+          test "$(curl -fsS http://localhost:8080/api/health)" = '{"status":"ok"}'
+          test "$(curl -fsS http://localhost:8080/api/seasons)" = '[]'
+          test "$(curl -s -o /dev/null -w '%{http_code}' 'http://localhost:8080/api/standings?season=bad')" = 422
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs
 
       - name: Tear down
         if: always()
