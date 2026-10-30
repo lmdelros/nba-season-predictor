@@ -24,13 +24,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Standard libpq variables, read by psql, so the same command works against any
+    # database (docker-compose.prod.yml points them at a managed one).
     environment:
+      PGHOST: postgres
+      PGUSER: nba
       PGPASSWORD: nba
+      PGDATABASE: nba_predictor
     volumes:
       - ./db:/db:ro
-    command: >-
-      psql -v ON_ERROR_STOP=1 -h postgres -U nba -d nba_predictor
-      -f /db/schema.sql -f /db/views.sql
+    command: psql -v ON_ERROR_STOP=1 -f /db/schema.sql -f /db/views.sql
     restart: "no"
 
   # REST API. Interactive docs at http://localhost:8000/docs.
