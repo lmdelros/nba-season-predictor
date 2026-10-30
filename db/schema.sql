@@ -1,8 +1,13 @@
 -- nba-season-predictor schema
 -- IDs for teams/players/games reuse the integer IDs nba_api returns from NBA.com,
 -- so ingestion can upsert directly without a separate ID-mapping step.
+--
+-- Safe to re-run: every statement is IF NOT EXISTS, so applying this file to an
+-- existing database creates any missing tables and indexes and leaves existing ones
+-- and their data alone. It does not add new columns to a table that already exists;
+-- a column change needs its own ALTER TABLE.
 
-CREATE TABLE teams (
+CREATE TABLE IF NOT EXISTS teams (
     team_id       INTEGER PRIMARY KEY,
     full_name     TEXT NOT NULL,
     abbreviation  TEXT NOT NULL,
@@ -10,7 +15,7 @@ CREATE TABLE teams (
     division      TEXT NOT NULL
 );
 
-CREATE TABLE players (
+CREATE TABLE IF NOT EXISTS players (
     player_id   INTEGER PRIMARY KEY,
     full_name   TEXT NOT NULL,
     position    TEXT,
@@ -23,7 +28,7 @@ CREATE TABLE players (
 -- roster endpoint and re-upserted each ingestion run, so the latest `season`
 -- row per player is the "current roster" and older rows double as roster
 -- history (handles trades/signings without needing effective-dated ranges).
-CREATE TABLE team_rosters (
+CREATE TABLE IF NOT EXISTS team_rosters (
     id             BIGSERIAL PRIMARY KEY,
     player_id      INTEGER NOT NULL REFERENCES players(player_id),
     team_id        INTEGER NOT NULL REFERENCES teams(team_id),
@@ -33,9 +38,9 @@ CREATE TABLE team_rosters (
     UNIQUE (player_id, season)
 );
 
-CREATE INDEX idx_team_rosters_team_season ON team_rosters(team_id, season);
+CREATE INDEX IF NOT EXISTS idx_team_rosters_team_season ON team_rosters(team_id, season);
 
-CREATE TABLE games (
+CREATE TABLE IF NOT EXISTS games (
     game_id       INTEGER PRIMARY KEY,
     season        TEXT NOT NULL,          -- e.g. '2025-26'
     season_type   TEXT NOT NULL,          -- 'regular' | 'playoffs'
@@ -47,12 +52,12 @@ CREATE TABLE games (
     status        TEXT NOT NULL DEFAULT 'scheduled'  -- 'scheduled' | 'final'
 );
 
-CREATE INDEX idx_games_season ON games(season);
-CREATE INDEX idx_games_date ON games(game_date);
-CREATE INDEX idx_games_home_team ON games(home_team_id);
-CREATE INDEX idx_games_away_team ON games(away_team_id);
+CREATE INDEX IF NOT EXISTS idx_games_season ON games(season);
+CREATE INDEX IF NOT EXISTS idx_games_date ON games(game_date);
+CREATE INDEX IF NOT EXISTS idx_games_home_team ON games(home_team_id);
+CREATE INDEX IF NOT EXISTS idx_games_away_team ON games(away_team_id);
 
-CREATE TABLE player_game_stats (
+CREATE TABLE IF NOT EXISTS player_game_stats (
     id              BIGSERIAL PRIMARY KEY,
     game_id         INTEGER NOT NULL REFERENCES games(game_id),
     player_id       INTEGER NOT NULL REFERENCES players(player_id),
@@ -76,12 +81,12 @@ CREATE TABLE player_game_stats (
     UNIQUE (game_id, player_id)
 );
 
-CREATE INDEX idx_pgs_player ON player_game_stats(player_id);
-CREATE INDEX idx_pgs_game ON player_game_stats(game_id);
+CREATE INDEX IF NOT EXISTS idx_pgs_player ON player_game_stats(player_id);
+CREATE INDEX IF NOT EXISTS idx_pgs_game ON player_game_stats(game_id);
 
 -- Derived/engineered features, kept separate from raw `games` so re-running
 -- feature engineering never mutates ingested source data.
-CREATE TABLE team_game_features (
+CREATE TABLE IF NOT EXISTS team_game_features (
     id                      BIGSERIAL PRIMARY KEY,
     game_id                 INTEGER NOT NULL REFERENCES games(game_id),
     team_id                 INTEGER NOT NULL REFERENCES teams(team_id),
@@ -97,10 +102,10 @@ CREATE TABLE team_game_features (
     UNIQUE (game_id, team_id)
 );
 
-CREATE INDEX idx_tgf_team ON team_game_features(team_id);
+CREATE INDEX IF NOT EXISTS idx_tgf_team ON team_game_features(team_id);
 
 -- K-means output: player playstyle archetypes, fit per season.
-CREATE TABLE player_clusters (
+CREATE TABLE IF NOT EXISTS player_clusters (
     id            BIGSERIAL PRIMARY KEY,
     player_id     INTEGER NOT NULL REFERENCES players(player_id),
     season        TEXT NOT NULL,
@@ -114,11 +119,11 @@ CREATE TABLE player_clusters (
     UNIQUE (player_id, season)
 );
 
-CREATE INDEX idx_player_clusters_season ON player_clusters(season);
+CREATE INDEX IF NOT EXISTS idx_player_clusters_season ON player_clusters(season);
 
 -- Predictions keyed by model_version so multiple models' outputs can be
 -- compared side by side for the same game.
-CREATE TABLE game_predictions (
+CREATE TABLE IF NOT EXISTS game_predictions (
     id                      BIGSERIAL PRIMARY KEY,
     game_id                 INTEGER NOT NULL REFERENCES games(game_id),
     model_version           TEXT NOT NULL,   -- e.g. 'logreg_v1', 'linreg_margin_v1'
@@ -129,11 +134,11 @@ CREATE TABLE game_predictions (
     UNIQUE (game_id, model_version)
 );
 
-CREATE INDEX idx_predictions_model_version ON game_predictions(model_version);
+CREATE INDEX IF NOT EXISTS idx_predictions_model_version ON game_predictions(model_version);
 
 -- Monte Carlo output: aggregated results across all simulated runs of the
 -- remaining season, per team, per simulation batch.
-CREATE TABLE season_simulations (
+CREATE TABLE IF NOT EXISTS season_simulations (
     id                BIGSERIAL PRIMARY KEY,
     season            TEXT NOT NULL,
     team_id           INTEGER NOT NULL REFERENCES teams(team_id),
@@ -146,13 +151,13 @@ CREATE TABLE season_simulations (
     UNIQUE (season, team_id, batch_id)
 );
 
-CREATE INDEX idx_season_sims_batch ON season_simulations(batch_id);
+CREATE INDEX IF NOT EXISTS idx_season_sims_batch ON season_simulations(batch_id);
 
 -- Per-player full-season aggregates, sourced from leaguedashplayerstats (one
 -- row per player per season, already combined across teams if traded) rather
 -- than summed from player_game_stats — cheap to backfill many historical
 -- seasons for award modeling without needing game-by-game data for each one.
-CREATE TABLE player_season_stats (
+CREATE TABLE IF NOT EXISTS player_season_stats (
     id            BIGSERIAL PRIMARY KEY,
     player_id     INTEGER NOT NULL REFERENCES players(player_id),
     season        TEXT NOT NULL,
@@ -172,12 +177,12 @@ CREATE TABLE player_season_stats (
     UNIQUE (player_id, season)
 );
 
-CREATE INDEX idx_player_season_stats_season ON player_season_stats(season);
+CREATE INDEX IF NOT EXISTS idx_player_season_stats_season ON player_season_stats(season);
 
 -- Team win/loss record per season, sourced from leaguestandingsv3 — same
 -- cheap-backfill rationale as player_season_stats: award models need a
 -- team's win% as a feature, not its full game log.
-CREATE TABLE team_season_standings (
+CREATE TABLE IF NOT EXISTS team_season_standings (
     id       BIGSERIAL PRIMARY KEY,
     team_id  INTEGER NOT NULL REFERENCES teams(team_id),
     season   TEXT NOT NULL,
@@ -190,7 +195,7 @@ CREATE TABLE team_season_standings (
 -- Ground truth award winners, sourced from playerawards (career awards list
 -- per player — binary "won" fact only, no vote share/points; NBA.com doesn't
 -- expose the underlying voting breakdown through this endpoint).
-CREATE TABLE player_awards (
+CREATE TABLE IF NOT EXISTS player_awards (
     id          BIGSERIAL PRIMARY KEY,
     player_id   INTEGER NOT NULL REFERENCES players(player_id),
     season      TEXT NOT NULL,
@@ -200,7 +205,7 @@ CREATE TABLE player_awards (
 
 -- Model-predicted win probability per candidate player, keyed by
 -- model_version like game_predictions.
-CREATE TABLE award_predictions (
+CREATE TABLE IF NOT EXISTS award_predictions (
     id              BIGSERIAL PRIMARY KEY,
     season          TEXT NOT NULL,
     award_type      TEXT NOT NULL,
