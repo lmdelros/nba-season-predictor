@@ -21,10 +21,16 @@ export default function App() {
       .catch((err) => setError(err.message))
   }, [])
 
-  useEffect(() => {
-    if (!season) return
+  // Clearing the previous season's data here, in the same update as the season change,
+  // shows "Loading…" without an extra render from resetting state inside the effect.
+  function changeSeason(nextSeason) {
+    setSeason(nextSeason)
     setStandings(null)
     setSimulations(null)
+  }
+
+  useEffect(() => {
+    if (!season) return
     Promise.all([getStandings(season), getSimulations(season)])
       .then(([standingsData, simulationsData]) => {
         setStandings(standingsData)
@@ -41,7 +47,7 @@ export default function App() {
           <p className="season-label">{season ? `${season} season` : "Loading…"}</p>
         </div>
         {seasons && (
-          <SeasonSelector seasons={seasons} selected={season} onChange={setSeason} />
+          <SeasonSelector seasons={seasons} selected={season} onChange={changeSeason} />
         )}
       </header>
 
