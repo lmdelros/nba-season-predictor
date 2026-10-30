@@ -1,0 +1,4 @@
+# Installed fresh inside the image by npm ci; a local node_modules may be built for
+# another operating system.
+node_modules
+dist
