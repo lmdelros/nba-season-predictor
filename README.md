@@ -1,121 +1,189 @@
-# nba-season-predictor
+# NBA Season Predictor
 
-A personal portfolio project that combines a PostgreSQL database, scikit-learn
-models, and a Monte Carlo simulation to project how an NBA season plays out —
-per-game win probabilities and season-long projections like playoff odds,
-built entirely on real historical data pulled from NBA.com via `nba_api`.
+Predicts NBA game winners and simulates the rest of a season to project standings, playoff odds, and championship odds, using five seasons of real NBA.com data.
 
-## Architecture
+[![CI](https://github.com/lmdelros/nba-season-predictor/actions/workflows/ci.yml/badge.svg)](https://github.com/lmdelros/nba-season-predictor/actions/workflows/ci.yml)
 
-Five layers, each a separate concern:
+![The web app showing 2025-26 standings and Monte Carlo playoff and championship odds](docs/screenshot.png)
 
-1. **Data ingestion** (`ingestion/pull_nba_data.py`) — pulls teams, games, and
-   player box scores from `nba_api` and upserts them into Postgres.
-2. **Feature engineering** (`features/build_features.py`) — builds
-   `team_game_features`: rolling win %, rest days, back-to-backs, pace-adjusted
-   offensive/defensive ratings, head-to-head record, home/away splits, and a
-   player-cluster diversity score — kept separate from raw ingested data so
-   re-running it never mutates source tables.
-3. **Modeling** (`models/`) — a logistic regression baseline for win
-   probability, a linear regression model for point margin, and k-means
-   clustering of players into playstyle archetypes.
-4. **Monte Carlo simulation** (`simulation/monte_carlo.py`) — simulates the
-   rest of a season thousands of times using the win probability model,
-   tallying projected wins and playoff odds across runs (the
-   FiveThirtyEight/ESPN BPI approach: probabilities across simulations, not a
-   single deterministic outcome).
-5. **Dashboard** (`dashboard/app.py`) — a Streamlit app reading all of the
-   above from Postgres.
+## Highlights
 
-## Setup
+- **68.6% of games predicted correctly on a season the model never saw** (all 1,230 games of 2025-26), 13.2 points better than always picking the home team, with lower log loss and Brier score than every baseline. [Results](docs/results.md)
+- **Found and fixed data leakage in the season simulator.** The original backtest scored future games with features built from their real results, which inflated its accuracy (0.976 rank correlation). After freezing every feature at the cutoff date it measured 0.921, then improved to 0.949. [Backtest](docs/backtest.md)
+- **Leakage is guarded by tests.** Every feature, the simulator, and a SQL window-function view are tested by rewriting future results and asserting nothing earlier changes; each test was checked by injecting the bug on purpose.
+- **Runs with one command.** Docker Compose starts PostgreSQL, a FastAPI service, and a React app served by nginx; a second command loads real data.
+- **50 automated tests in CI** on every push: Python and database tests against a real PostgreSQL instance, frontend tests and build, and a smoke test of the whole stack through nginx.
 
-Requires Docker Desktop and Python 3.12+.
+## Overview
+
+The project pulls game results and box scores from NBA.com, stores them in PostgreSQL, and turns them into per-team features such as season-to-date point margin and rest days. A logistic regression model estimates each game's home-win probability. A Monte Carlo simulation then plays out the rest of the season 10,000 times, seeds a best-of-seven playoff bracket from each simulated season, and counts how often each team makes the playoffs and wins the title. The results are served by a REST API and shown in a React web app.
+
+Every reported number comes from a script in this repository that anyone can rerun, and the win model and the simulation are both compared with simple baselines, so a claim like "+13.2 points" has a reference point. Projections are evaluated as backtests on completed seasons: the simulation pretends it is February 1, 2026, and its projections are compared with how the 2025-26 season actually ended.
+
+```mermaid
+flowchart LR
+    NBA["NBA.com stats API"] -->|nba_api| ING["Ingestion"]
+    ING --> DB[("PostgreSQL")]
+    DB --> FEAT["Features<br/>(pandas + SQL view)"]
+    FEAT --> DB
+    DB --> MODEL["Win model<br/>(scikit-learn)"]
+    MODEL --> SIM["Monte Carlo<br/>season + playoffs"]
+    SIM --> DB
+    DB --> API["FastAPI"]
+    API --> WEB["nginx + React"]
+    WEB --> USER["Browser"]
+```
+
+## Tech stack
+
+| Tool | What it does here |
+|---|---|
+| **Python 3.12** | Data pipeline, models, simulation, and API |
+| **nba_api** | Downloads game logs, box scores, and award history from NBA.com |
+| **PostgreSQL 16** | Stores 13 tables of games, box scores, features, predictions, and simulation runs; a SQL view computes each team's season-to-date point margin with window functions |
+| **pandas, NumPy** | Feature engineering and simulation |
+| **scikit-learn** | Logistic regression win model, gradient boosting comparison, linear regression margin model, k-means player clustering |
+| **FastAPI** | REST API for standings, predictions, and simulation results |
+| **React 19 + Vite** | Web app showing standings and playoff odds |
+| **nginx** | Serves the built React app and forwards `/api` requests to FastAPI |
+| **Docker Compose** | Runs PostgreSQL, a schema migration step, the API, and the web app together |
+| **pytest, Vitest** | Python, database, API, and frontend tests |
+| **GitHub Actions** | Runs lint, all tests, and a full-stack smoke test on every push |
+
+## Getting started
+
+### Requirements
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine with Compose v2)
+- Git
+- Free ports 5433 (PostgreSQL), 8000 (API), and 8080 (web app)
+- Internet access to NBA.com for loading data
+
+### Run it
+
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/lmdelros/nba-season-predictor.git
+   cd nba-season-predictor
+   ```
+
+2. Build and start the app (PostgreSQL, the API, and the web app):
+
+   ```bash
+   docker compose up -d --wait
+   ```
+
+3. Load one season of real data. This downloads the 2025-26 season from NBA.com, builds features, trains the model, and runs 10,000 simulations. It usually takes about a minute, depending on how quickly NBA.com responds.
+
+   ```bash
+   docker compose run --rm pipeline python -m scripts.seed_demo
+   ```
+
+4. Open **http://localhost:8080**.
+
+To stop everything, run `docker compose down`. Your data stays in a Docker volume; add `-v` to delete it too.
+
+No environment file is needed: the Compose file sets every setting, and the database password is a local-only default.
+
+## Usage
+
+The web app shows the final standings for each loaded season and, for seasons with a simulation run, each team's playoff and championship odds as projected from the simulation's cutoff date.
+
+The API is available directly on port 8000, with interactive documentation at **http://localhost:8000/docs**, and through the web app under `/api`:
 
 ```bash
-# 1. Start Postgres (schema auto-loads from db/schema.sql on first run)
-docker compose up -d
+curl "http://localhost:8080/api/simulations?season=2025-26"
+```
 
-# 2. Create a virtual environment and install dependencies
+Each team's entry looks like this (your `batch_id`, `run_at`, and odds will differ with the data you loaded):
+
+```json
+{
+  "team_id": 1610612760,
+  "abbreviation": "OKC",
+  "full_name": "Oklahoma City Thunder",
+  "batch_id": "69580a28-b99a-4791-92e4-36ef9c2d52ae",
+  "run_at": "2026-10-30T19:18:59.847019Z",
+  "num_simulations": 10000,
+  "avg_wins": 61.14,
+  "playoff_pct": 1.0,
+  "championship_pct": 0.4763
+}
+```
+
+Other endpoints: `/health`, `/seasons`, `/teams`, `/standings?season=`, and `/predictions?season=`.
+
+To run individual pipeline steps, load more seasons, retrain models, or reproduce the evaluations, see [docs/pipeline.md](docs/pipeline.md).
+
+## Results
+
+All numbers below are produced by scripts in `evaluation/` and `models/`; each linked page shows the exact command.
+
+**Win model:** trained on 2021-22 through 2024-25, tested once on all 1,230 games of 2025-26. ([docs/results.md](docs/results.md))
+
+| Method | Accuracy | Log loss | Brier |
+|---|---|---|---|
+| Always pick the home team | 55.4% | 0.687 | 0.247 |
+| Pick the team with the better record so far | 66.9% | 0.631 | 0.220 |
+| Gradient boosting, same features | 65.1% | 0.628 | 0.218 |
+| **Logistic regression (this project)** | **68.6%** | **0.608** | **0.209** |
+
+Log loss and Brier score measure how good the predicted probabilities are; lower is better for both. The model's six features (season-to-date point margin, rest days, and back-to-backs for each team) were chosen by validating on earlier seasons only. ([docs/feature_selection.md](docs/feature_selection.md))
+
+**Season simulation:** projecting 2025-26 from February 1, 2026. ([docs/backtest.md](docs/backtest.md))
+
+| Method | Rank correlation with final standings | Mean error (wins) |
+|---|---|---|
+| Keep each team's February 1 win % for all 82 games | 0.943 | 3.54 |
+| **Monte Carlo simulation (this project)** | **0.949** | 4.02 |
+
+The simulation orders teams slightly better than the naive projection and found 14 of the 16 playoff teams, but its win totals are less accurate (see Limitations).
+
+**Point-margin model:** a linear regression on the original 13 features predicts the final margin within 12.11 points on average, against 14.32 for always predicting the average margin (2024-25, last 20% of the season, 262 games).
+
+**Award models (MVP, DPOY, ROY, MIP):** for each award, a logistic regression ranks every season's 20 most likely candidates, trained on 2010-11 through 2021-22. On the three held-out seasons (2022-23 through 2024-25) its top pick was the real winner 7 times out of 12: MVP 2 of 3, Defensive Player of the Year 1 of 3, Rookie of the Year 2 of 3, and Most Improved Player 2 of 3. Three seasons per award is a small sample, and the DPOY and MIP candidate lists leave out some real winners, which limits those two models. ([docs/pipeline.md](docs/pipeline.md#award-models))
+
+## Running tests
+
+Python tests (the database and API tests use the Compose database on port 5433 and are skipped if it is not running):
+
+```bash
 python -m venv .venv
-.venv\Scripts\Activate.ps1        # Windows PowerShell
-pip install -r requirements.txt
+source .venv/bin/activate        # Windows PowerShell: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt -r requirements-dev.txt
+docker compose up -d --wait
+ruff check .
+python -m pytest
 ```
 
-Postgres runs on `localhost:5433` (not 5432 — see *Notes* below), database
-`nba_predictor`, user/password `nba`/`nba`.
-
-## Running the pipeline
-
-Each stage is a standalone script, run in order for a given season:
+Frontend tests, lint, and build:
 
 ```bash
-python ingestion/pull_nba_data.py --season 2024-25
-python features/build_features.py --season 2024-25
-
-# Pick k by eye first (elbow/silhouette diagnostics), then fit:
-python models/train_player_clusters.py --season 2024-25
-python models/train_player_clusters.py --season 2024-25 --k 5
-
-# Re-run features once clusters exist, to backfill cluster_diversity_score:
-python features/build_features.py --season 2024-25
-
-python models/train_win_probability.py --season 2024-25
-python models/train_margin.py --season 2024-25
-
-# Backtest a full season (no season is currently in progress, so this
-# treats games before --cutoff-date as "already played" and simulates
-# everything after using the trained model):
-python simulation/monte_carlo.py --season 2024-25 --cutoff-date 2025-02-01
-
-streamlit run dashboard/app.py
+cd frontend
+npm ci
+npm run lint
+npm test
+npm run build
 ```
 
-## Database schema
+## Limitations
 
-Nine tables in `db/schema.sql`: `teams`, `players`, `team_rosters`, `games`,
-`player_game_stats`, `team_game_features` (engineered, separate from raw
-`games`), `player_clusters` (k-means output, manually labeled after
-inspection), `game_predictions` (keyed by `model_version` so multiple models
-can be compared side by side), and `season_simulations` (Monte Carlo output,
-keyed by `batch_id` so multiple simulation runs can coexist).
+- **Simulated win totals are compressed toward .500.** The simulation ranks teams well, but in the 2025-26 backtest it projected the ten best teams 3.9 wins too low and the ten worst 4.7 wins too high on average, so its win-total error (4.02) is higher than simply extrapolating each team's record (3.54).
+- **Backtests only.** Every projection is evaluated on a completed season with a pretend cutoff date; no season was in progress while this was built.
+- **The play-in tournament is not modeled.** The top eight teams in each conference by wins make the playoffs.
+- **The data download depends on NBA.com,** which can be slow and is reported to block requests from cloud servers.
+- **Applying `db/schema.sql` adds missing tables but not new columns** to tables that already exist.
+- **Player clusters are labeled by hand** after each fit, since k-means numbers clusters arbitrarily.
 
-## Results (2024-25 season)
+## Project status
 
-- **Win probability model** (logistic regression): 70.6% accuracy, 0.571 log
-  loss, 0.193 Brier score, well-calibrated across probability buckets.
-- **Margin model** (linear regression): 12.11 points MAE (vs. 14.32 baseline),
-  71.8% implied win/loss accuracy from the sign of the predicted margin.
-- **Player clustering** (k=5): Facilitating Guard, Secondary Scorer, 3-and-D
-  Wing, Primary Scorer/Shot Creator, Traditional Big/Rim Runner.
-- **Monte Carlo backtest** (2025-26, cutoff 2026-02-01, 10k simulations):
-  0.977 rank correlation with actual final win totals, ~0 net bias, 3.77 MAE.
-  Extreme teams (very good/bad) show expected regression-to-mean compression
-  — a known artifact of these systems, not a bug, since box-score features
-  can't see things like tanking or late-season motivation shifts.
+Actively developed as a portfolio project. Planned next: a hosted deployment.
 
-## Known limitations
+## Contributing
 
-- **`championship_pct`** in `season_simulations` is left `NULL` — computing it
-  properly needs a full playoff bracket simulation (seeding, best-of-7 series,
-  round by round), which is a separate, larger piece of future work.
-- **No live season to simulate.** Every Monte Carlo run here is a backtest
-  against a `--cutoff-date` on an already-completed season, not a genuine
-  in-progress projection, since none was available while building this.
-- **Cluster labels are manual and per-fit.** k-means' cluster numbering is
-  arbitrary and can shift on re-fit (different data, different library
-  version), so labels like "3-and-D Wing" are applied by hand after
-  inspection, not derived in code.
-- **Player bio fields** (`position`, `height_in`, `weight_lb`, `birth_date`)
-  are unpopulated — they'd require a separate per-player API call
-  (`commonplayerinfo`) not currently part of the ingestion script.
-- Postgres runs on port **5433**, not the default 5432, to avoid conflicting
-  with any native Postgres install already using 5432 on the host.
+Issues and suggestions are welcome. For larger changes, please open an issue first to discuss the idea.
 
-## Stretch goals
+## Author
 
-- Compare the logistic regression baseline against gradient-boosted trees
-  (XGBoost/LightGBM), which typically outperform plain logistic regression for
-  win probability.
-- Full playoff bracket simulation for `championship_pct`.
-- Cloud deployment (Azure Database for PostgreSQL + Container Apps) — not
-  needed for local review, but noted as a possible future step.
+**Luis del Rosario**, [GitHub](https://github.com/lmdelros)
