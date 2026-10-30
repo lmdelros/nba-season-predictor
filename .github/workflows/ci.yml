@@ -86,8 +86,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate compose file
-        run: docker compose config
+      - name: Validate compose files
+        run: |
+          docker compose config --quiet
+          docker compose -f docker-compose.prod.yml --env-file .env.example config --quiet
 
       # Includes the pipeline image (tools profile), which "up" alone would skip.
       - name: Build images
