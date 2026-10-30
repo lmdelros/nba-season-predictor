@@ -1,0 +1,55 @@
+# Production stack for a single server with a managed PostgreSQL database such as
+# AWS RDS. Unlike docker-compose.yml there is no local Postgres, and only the web app
+# is published. Database settings come from a .env file next to this one (copy
+# .env.example); Compose stops with an error if a required one is missing.
+#   docker compose -f docker-compose.prod.yml up -d --build
+services:
+  # Applies db/schema.sql and db/views.sql to the managed database on every start;
+  # both are safe to re-run.
+  migrate:
+    image: postgres:16
+    environment:
+      PGHOST: ${DB_HOST:?set DB_HOST in .env}
+      PGPORT: ${DB_PORT:-5432}
+      PGUSER: ${DB_USER:?set DB_USER in .env}
+      PGPASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      PGDATABASE: ${DB_NAME:-nba_predictor}
+      # Refuse unencrypted connections to a database reached over the network.
+      PGSSLMODE: require
+    volumes:
+      - ./db:/db:ro
+    command: psql -v ON_ERROR_STOP=1 -f /db/schema.sql -f /db/views.sql
+    restart: "no"
+
+  # Not published: only nginx (web) reaches it, over the Compose network.
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: ${DB_HOST:?set DB_HOST in .env}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:?set DB_USER in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      DB_NAME: ${DB_NAME:-nba_predictor}
+      # psycopg2 reads this libpq variable too.
+      PGSSLMODE: require
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    build: frontend
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    restart: unless-stopped
