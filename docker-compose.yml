@@ -33,6 +33,39 @@ services:
       -f /db/schema.sql -f /db/views.sql
     restart: "no"
 
+  # REST API. Interactive docs at http://localhost:8000/docs.
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+    ports:
+      - "8000:8000"
+    # /health runs a query, so "healthy" means the API is up and can reach Postgres.
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # The React app, served by nginx, which forwards /api/... to the api service.
+  # Open http://localhost:8080.
+  web:
+    build: frontend
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
   # Pipeline scripts (ingestion, features, models, simulation) with the full Python
   # dependencies. The "tools" profile keeps it out of "docker compose up"; run it on
   # demand, and Compose starts Postgres and the migration first:
