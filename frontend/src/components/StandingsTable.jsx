@@ -1,3 +1,5 @@
+import TeamLogo from "./TeamLogo"
+
 function ConferenceTable({ conference, teams }) {
   return (
     <table className="standings-table">
@@ -13,7 +15,12 @@ function ConferenceTable({ conference, teams }) {
       <tbody>
         {teams.map((team) => (
           <tr key={team.team_id}>
-            <td>{team.full_name}</td>
+            <td>
+              <span className="team-cell">
+                <TeamLogo teamId={team.team_id} abbreviation={team.abbreviation} size={20} />
+                {team.full_name}
+              </span>
+            </td>
             <td>{team.wins}</td>
             <td>{team.losses}</td>
             <td>{team.win_pct.toFixed(3)}</td>

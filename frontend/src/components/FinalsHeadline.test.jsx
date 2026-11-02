@@ -34,6 +34,16 @@ describe("FinalsHeadline", () => {
     expect(screen.getByText(/Detroit Pistons won 65\.0% of those Finals/)).toBeInTheDocument()
   })
 
+  it("shows both teams' logos", () => {
+    const { container } = render(<FinalsHeadline matchups={[matchup(0.3)]} />)
+
+    const logos = [...container.querySelectorAll("img")].map((img) => img.getAttribute("src"))
+    expect(logos).toEqual([
+      "https://cdn.nba.com/logos/nba/1/global/D/logo.svg",
+      "https://cdn.nba.com/logos/nba/2/global/D/logo.svg",
+    ])
+  })
+
   it("renders nothing when the run has no matchups", () => {
     const { container } = render(<FinalsHeadline matchups={[]} />)
 

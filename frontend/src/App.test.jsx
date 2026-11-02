@@ -46,7 +46,7 @@ describe("App", () => {
     render(<App />)
 
     expect(await screen.findByText("2025-26 season")).toBeInTheDocument()
-    expect(await screen.findByText("Boston Celtics", { selector: "td" })).toBeInTheDocument()
+    expect(await screen.findByText("Boston Celtics", { selector: ".team-cell" })).toBeInTheDocument()
     expect(screen.getByText("99%")).toBeInTheDocument()
     expect(screen.getByText("Most likely NBA Finals")).toBeInTheDocument()
     expect(getStandings).toHaveBeenCalledWith("2025-26")

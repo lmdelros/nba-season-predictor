@@ -115,6 +115,7 @@ section h2 {
   padding: 0.4rem 0.75rem;
   text-align: left;
   font-variant-numeric: tabular-nums;
+  vertical-align: middle;
 }
 
 .standings-table th {
@@ -146,7 +147,7 @@ section h2 {
 
 .playoff-odds-row {
   display: grid;
-  grid-template-columns: 10rem 1fr 3rem 5rem 6rem;
+  grid-template-columns: 12rem 1fr 3rem 5rem 6rem;
   align-items: center;
   gap: 0.75rem;
   padding: 0.35rem 0;
@@ -161,6 +162,11 @@ section h2 {
 
 .team-name {
   font-size: 0.9rem;
+  min-width: 0;
+}
+
+/* Truncation lives on the text, not the flex row, so long names end in an ellipsis. */
+.team-name-text {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -220,4 +226,35 @@ section h2 {
 .finals-detail {
   margin: 0;
   color: var(--text-muted);
+}
+
+.team-logo {
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.team-logo-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.team-cell,
+.team-name,
+.finals-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.finals-teams {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }

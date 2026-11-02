@@ -33,6 +33,16 @@ describe("StandingsTable", () => {
     expect(westTable).toHaveTextContent("Oklahoma City Thunder")
   })
 
+  it("shows each team's logo next to its name", () => {
+    const { container } = render(<StandingsTable standings={standings} />)
+
+    const logos = [...container.querySelectorAll("img")].map((img) => img.getAttribute("src"))
+    expect(logos).toEqual([
+      "https://cdn.nba.com/logos/nba/1/global/D/logo.svg",
+      "https://cdn.nba.com/logos/nba/2/global/D/logo.svg",
+    ])
+  })
+
   it("formats win percentage to three decimal places", () => {
     render(<StandingsTable standings={standings} />)
 

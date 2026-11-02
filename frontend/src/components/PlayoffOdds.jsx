@@ -1,3 +1,5 @@
+import TeamLogo from "./TeamLogo"
+
 export default function PlayoffOdds({ simulations }) {
   // The API returns an empty list for seasons that no Monte Carlo run has covered.
   if (simulations.length === 0) {
@@ -21,7 +23,10 @@ export default function PlayoffOdds({ simulations }) {
       <ul className="playoff-odds-list">
         {simulations.map((team) => (
           <li key={team.team_id} className="playoff-odds-row">
-            <span className="team-name">{team.full_name}</span>
+            <span className="team-name">
+              <TeamLogo teamId={team.team_id} abbreviation={team.abbreviation} size={20} />
+              <span className="team-name-text">{team.full_name}</span>
+            </span>
             <div className="odds-bar-track">
               <div
                 className="odds-bar-fill"
