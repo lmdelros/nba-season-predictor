@@ -53,3 +53,24 @@ services:
     ports:
       - "80:80"
     restart: unless-stopped
+
+  # Pipeline scripts (features, models, simulation) with the full Python dependencies,
+  # run on demand against the managed database. Data downloads from NBA.com run on a
+  # local machine instead, since NBA.com is reported to block cloud servers.
+  #   docker compose -f docker-compose.prod.yml run --rm pipeline \
+  #     python -m simulation.monte_carlo --season 2025-26 --cutoff-date 2026-02-01
+  pipeline:
+    build:
+      context: .
+      dockerfile: pipeline.Dockerfile
+    profiles: ["tools"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: ${DB_HOST:?set DB_HOST in .env}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:?set DB_USER in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      DB_NAME: ${DB_NAME:-nba_predictor}
+      PGSSLMODE: require
