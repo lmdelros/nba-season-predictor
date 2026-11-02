@@ -485,23 +485,26 @@ def summarize_finals(finals, n_simulations):
                                 ignore_index=True)
 
 
-def save_simulation_results(conn, results_df, season, n_simulations, batch_id=None):
+def save_simulation_results(conn, results_df, season, n_simulations, batch_id=None,
+                            cutoff_date=None):
     """Upserts into season_simulations.
 
     batch_id groups all 30 teams' rows from this one run together — generate
     one (e.g. str(uuid.uuid4()) or a timestamp string) if the caller doesn't
     pass one, so you can keep multiple historical simulation runs side by
-    side instead of overwriting them.
+    side instead of overwriting them. cutoff_date records the date the run
+    projected the season from.
     """
     batch_id = batch_id or str(uuid.uuid4())
 
     sql = """
         INSERT INTO season_simulations (season, team_id, batch_id, num_simulations,
-                                         avg_wins, playoff_pct, championship_pct)
+                                         avg_wins, playoff_pct, championship_pct, cutoff_date)
         VALUES (%(season)s, %(team_id)s, %(batch_id)s, %(num_simulations)s,
-                %(avg_wins)s, %(playoff_pct)s, %(championship_pct)s)
+                %(avg_wins)s, %(playoff_pct)s, %(championship_pct)s, %(cutoff_date)s)
         ON CONFLICT (season, team_id, batch_id) DO UPDATE SET
             num_simulations = EXCLUDED.num_simulations,
+            cutoff_date = EXCLUDED.cutoff_date,
             avg_wins = EXCLUDED.avg_wins,
             playoff_pct = EXCLUDED.playoff_pct,
             championship_pct = EXCLUDED.championship_pct
@@ -512,6 +515,7 @@ def save_simulation_results(conn, results_df, season, n_simulations, batch_id=No
             "team_id": int(row.team_id),
             "batch_id": batch_id,
             "num_simulations": n_simulations,
+            "cutoff_date": cutoff_date,
             "avg_wins": float(row.avg_wins),
             "playoff_pct": float(row.playoff_pct),
             "championship_pct": float(row.championship_pct),
@@ -582,7 +586,9 @@ def main():
         current_wins, remaining, win_probs, teams_df, pairwise_probs,
         n_simulations=args.n_simulations,
     )
-    batch_id = save_simulation_results(conn, results, args.season, args.n_simulations)
+    batch_id = save_simulation_results(
+        conn, results, args.season, args.n_simulations, cutoff_date=args.cutoff_date
+    )
     save_finals(conn, finals, args.season, batch_id)
 
     print(

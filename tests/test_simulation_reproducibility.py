@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from simulation.monte_carlo import run_simulations
+from simulation.monte_carlo import run_simulations, save_simulation_results
 
 
 def _league(seed=0):
@@ -76,3 +76,36 @@ def test_finals_matchups_agree_with_championship_odds():
     conference = dict(zip(teams_df["team_id"], teams_df["conference"]))
     pairs = zip(finals["team_a_id"], finals["team_b_id"])
     assert all(conference[a] != conference[b] for a, b in pairs)
+
+
+class _RecordingConnection:
+    """Stands in for a database connection and records what would be written."""
+
+    def __init__(self):
+        self.rows = []
+
+    def cursor(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def executemany(self, sql, rows):
+        self.rows.extend(rows)
+
+    def commit(self):
+        pass
+
+
+def test_saved_runs_record_their_cutoff_date():
+    results, _ = run_simulations(*_league(), n_simulations=50, seed=42)
+    conn = _RecordingConnection()
+
+    save_simulation_results(conn, results, "2025-26", 50, "batch-1", cutoff_date="2026-02-01")
+
+    assert len(conn.rows) == len(results)
+    assert {row["cutoff_date"] for row in conn.rows} == {"2026-02-01"}
+    assert {row["batch_id"] for row in conn.rows} == {"batch-1"}
