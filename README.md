@@ -180,6 +180,7 @@ npm run build
 - **Applying `db/schema.sql` adds missing tables but not new columns** to tables that already exist.
 - **Player clusters are labeled by hand** after each fit, since k-means numbers clusters arbitrarily.
 - **The live demo uses HTTP, not HTTPS.** HTTPS needs a domain name and a certificate, which the deployment does not have yet.
+- **Team logos are trademarks of the NBA and its teams.** The app loads them from NBA.com to identify teams; they are not stored in this repository. If a logo cannot be loaded, the team's abbreviation is shown instead.
 
 ## Project status
 
