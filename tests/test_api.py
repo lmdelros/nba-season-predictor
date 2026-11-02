@@ -47,6 +47,16 @@ def _insert_simulations(db, rows):
         )
 
 
+def _insert_finals(db, batch_id, rows):
+    """rows: (team_a_id, team_b_id, meetings, team_a_wins), out of 1000 simulations."""
+    with db.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO simulation_finals (season, batch_id, team_a_id, team_b_id, "
+            "meetings, team_a_wins, matchup_pct) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            [(SEASON, batch_id, a, b, m, w, m / 1000) for a, b, m, w in rows],
+        )
+
+
 def test_health_reports_ok(client):
     response = client.get("/health")
 
@@ -92,7 +102,9 @@ def test_standings_count_home_and_away_results_and_skip_unplayed_games(db, clien
     assert (by_team[9003]["wins"], by_team[9003]["losses"]) == (0, 1)
 
 
-@pytest.mark.parametrize("path", ["/standings", "/predictions", "/simulations"])
+@pytest.mark.parametrize(
+    "path", ["/standings", "/predictions", "/simulations", "/simulations/finals"]
+)
 @pytest.mark.parametrize("params", [{}, {"season": "2099"}, {"season": "99-00"}])
 def test_season_parameter_is_required_and_validated(client, path, params):
     assert client.get(path, params=params).status_code == 422
@@ -155,3 +167,34 @@ def test_simulations_default_to_the_latest_batch(db, client):
 
 def test_simulations_for_a_season_without_runs_are_empty(client):
     assert client.get("/simulations", params={"season": SEASON}).json() == []
+
+
+def test_finals_matchups_come_from_the_latest_batch_most_likely_first(db, client):
+    _insert_simulations(db, [
+        (9001, "old", EARLIER, 50.0, 0.9, 0.5),
+        (9001, "new", LATER, 55.0, 0.95, 0.3),
+    ])
+    _insert_finals(db, "old", [(9001, 9004, 900, 100)])
+    _insert_finals(db, "new", [(9001, 9003, 120, 90), (9001, 9002, 300, 210)])
+    matchups = client.get("/simulations/finals", params={"season": SEASON}).json()
+
+    assert [(m["team_a_id"], m["team_b_id"]) for m in matchups] == [(9001, 9002), (9001, 9003)]
+    top = matchups[0]
+    assert top["team_a_abbreviation"] == "T9001" and top["team_b_name"] == "Test Team 9002"
+    assert (top["meetings"], top["num_simulations"]) == (300, 1000)
+    assert top["matchup_pct"] == 0.3
+    assert top["team_a_win_pct"] == 0.7
+
+    limited = client.get("/simulations/finals", params={"season": SEASON, "limit": 1}).json()
+    assert len(limited) == 1
+
+
+def test_finals_are_empty_when_the_latest_run_has_no_matchups(db, client):
+    _insert_simulations(db, [
+        (9001, "with-finals", EARLIER, 50.0, 0.9, 0.5),
+        (9001, "without-finals", LATER, 55.0, 0.95, 0.3),
+    ])
+    _insert_finals(db, "with-finals", [(9001, 9002, 500, 250)])
+
+    # The page shows the newest run's odds, so it must not mix in an older run's Finals.
+    assert client.get("/simulations/finals", params={"season": SEASON}).json() == []

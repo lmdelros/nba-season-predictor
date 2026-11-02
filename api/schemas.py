@@ -45,3 +45,17 @@ class SimulationOut(BaseModel):
     avg_wins: float
     playoff_pct: float
     championship_pct: float | None
+
+
+class FinalsMatchupOut(BaseModel):
+    batch_id: str
+    team_a_id: int
+    team_a_abbreviation: str
+    team_a_name: str
+    team_b_id: int
+    team_b_abbreviation: str
+    team_b_name: str
+    meetings: int
+    num_simulations: int
+    matchup_pct: float
+    team_a_win_pct: float
