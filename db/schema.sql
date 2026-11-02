@@ -153,6 +153,24 @@ CREATE TABLE IF NOT EXISTS season_simulations (
 
 CREATE INDEX IF NOT EXISTS idx_season_sims_batch ON season_simulations(batch_id);
 
+-- Finals matchups from one simulation run (same batch_id as its season_simulations
+-- rows): how many simulated seasons each pair met in the Finals, and how many of those
+-- team_a won. Each pair is stored once, with the lower team ID as team_a.
+CREATE TABLE IF NOT EXISTS simulation_finals (
+    id            BIGSERIAL PRIMARY KEY,
+    season        TEXT NOT NULL,
+    batch_id      TEXT NOT NULL,
+    team_a_id     INTEGER NOT NULL REFERENCES teams(team_id),
+    team_b_id     INTEGER NOT NULL REFERENCES teams(team_id),
+    meetings      INTEGER NOT NULL,
+    team_a_wins   INTEGER NOT NULL,
+    matchup_pct   NUMERIC(5,4) NOT NULL,
+    UNIQUE (batch_id, team_a_id, team_b_id),
+    CHECK (team_a_id < team_b_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_simulation_finals_batch ON simulation_finals(batch_id);
+
 -- Per-player full-season aggregates, sourced from leaguedashplayerstats (one
 -- row per player per season, already combined across teams if traded) rather
 -- than summed from player_game_stats — cheap to backfill many historical
