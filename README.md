@@ -92,7 +92,7 @@ No environment file is needed: the Compose file sets every setting, and the data
 
 ## Usage
 
-The web app shows the final standings for each loaded season and, for seasons with a simulation run, each team's playoff and championship odds as projected from the simulation's cutoff date.
+The web app shows the final standings for each loaded season and, for seasons with a simulation run, the most likely NBA Finals matchup and each team's playoff and championship odds. Each projection is labeled with the date it was made from; the live demo projects every season from February 1 of that season.
 
 The API is available directly on port 8000, with interactive documentation at **http://localhost:8000/docs**, and through the web app under `/api`:
 
@@ -175,6 +175,7 @@ npm run build
 
 - **Simulated win totals are compressed toward .500.** The simulation ranks teams well, but in the 2025-26 backtest it projected the ten best teams 3.9 wins too low and the ten worst 4.7 wins too high on average, so its win-total error (4.02) is higher than simply extrapolating each team's record (3.54).
 - **Backtests only.** Every projection is evaluated on a completed season with a pretend cutoff date; no season was in progress while this was built.
+- **The oldest season has the least to learn from.** Each projection trains on earlier seasons plus that season's games before the cutoff, so 2021-22, the first season in the data, is projected from its own games only.
 - **The play-in tournament is not modeled.** The top eight teams in each conference by wins make the playoffs.
 - **The data download depends on NBA.com,** which can be slow and is reported to block requests from cloud servers.
 - **Applying `db/schema.sql` adds missing tables but not new columns** to tables that already exist.
