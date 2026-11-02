@@ -64,7 +64,7 @@ def run_backtest(conn, season, cutoff_date, n_simulations, seed, use_history=Tru
     pairwise_probs = compute_pairwise_win_probs(
         teams_df["team_id"], snapshot, model, scaler, fills
     )
-    results = run_simulations(
+    results, _ = run_simulations(
         current_wins, remaining, win_probs, teams_df, pairwise_probs,
         n_simulations=n_simulations, seed=seed,
     )

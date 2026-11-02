@@ -27,22 +27,23 @@ def _league(seed=0):
 
 
 def test_same_seed_gives_identical_results():
-    first = run_simulations(*_league(), n_simulations=300, seed=42)
-    second = run_simulations(*_league(), n_simulations=300, seed=42)
+    first, first_finals = run_simulations(*_league(), n_simulations=300, seed=42)
+    second, second_finals = run_simulations(*_league(), n_simulations=300, seed=42)
 
     pd.testing.assert_frame_equal(first, second)
+    pd.testing.assert_frame_equal(first_finals, second_finals)
 
 
 def test_different_seeds_give_different_results():
-    first = run_simulations(*_league(), n_simulations=300, seed=42)
-    second = run_simulations(*_league(), n_simulations=300, seed=7)
+    first, _ = run_simulations(*_league(), n_simulations=300, seed=42)
+    second, _ = run_simulations(*_league(), n_simulations=300, seed=7)
 
     assert not first.equals(second)
 
 
 def test_results_are_valid_probabilities_and_win_totals():
     current_wins, remaining, *rest = _league()
-    results = run_simulations(current_wins, remaining, *rest, n_simulations=300, seed=42)
+    results, _ = run_simulations(current_wins, remaining, *rest, n_simulations=300, seed=42)
 
     assert results["playoff_pct"].between(0, 1).all()
     # Exactly one champion per simulated season, and 16 playoff teams (8 per conference).
@@ -51,3 +52,27 @@ def test_results_are_valid_probabilities_and_win_totals():
     assert results["playoff_pct"].sum() == pytest.approx(16.0)
     # Every remaining game produces exactly one win.
     assert results["avg_wins"].sum() == pytest.approx(sum(current_wins.values()) + len(remaining))
+
+
+def test_finals_matchups_agree_with_championship_odds():
+    current_wins, remaining, win_probs, teams_df, pairwise = _league()
+    results, finals = run_simulations(
+        current_wins, remaining, win_probs, teams_df, pairwise, n_simulations=300, seed=42
+    )
+
+    # Every simulated season has exactly one Finals, and each pair is stored once.
+    assert finals["meetings"].sum() == 300
+    assert finals["matchup_pct"].sum() == pytest.approx(1.0)
+    assert (finals["team_a_id"] < finals["team_b_id"]).all()
+    assert finals["meetings"].is_monotonic_decreasing
+    # A team's titles across all its Finals equal its championship odds.
+    titles = {}
+    for row in finals.itertuples():
+        titles[row.team_a_id] = titles.get(row.team_a_id, 0) + row.team_a_wins
+        titles[row.team_b_id] = titles.get(row.team_b_id, 0) + row.meetings - row.team_a_wins
+    for row in results.itertuples():
+        assert titles.get(row.team_id, 0) / 300 == pytest.approx(row.championship_pct)
+    # Conference champions only: both teams in a Finals come from different conferences.
+    conference = dict(zip(teams_df["team_id"], teams_df["conference"]))
+    pairs = zip(finals["team_a_id"], finals["team_b_id"])
+    assert all(conference[a] != conference[b] for a, b in pairs)

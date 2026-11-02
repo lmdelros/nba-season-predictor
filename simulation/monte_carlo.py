@@ -359,7 +359,7 @@ def simulate_playoff_bracket(final_wins, teams_df, pairwise_probs, rng):
     meet in the Finals with home court going to whoever has the better
     regular-season record overall (the real NBA rule since 2014).
 
-    Return: champion team_id for this one simulation.
+    Return: (champion team_id, the two Finals teams) for this one simulation.
     """
     champions = []
     for _, group in teams_df.groupby("conference"):
@@ -367,7 +367,7 @@ def simulate_playoff_bracket(final_wins, teams_df, pairwise_probs, rng):
         champions.append(simulate_conference(seeds, pairwise_probs, rng))
 
     higher, lower = sorted(champions, key=lambda t: -final_wins.get(t, 0))
-    return simulate_series(higher, lower, pairwise_probs, rng)
+    return simulate_series(higher, lower, pairwise_probs, rng), (higher, lower)
 
 
 def simulate_one_season(current_wins, remaining_games, win_probs, rng):
@@ -426,13 +426,17 @@ def run_simulations(
       - playoff_pct: fraction of sims where each team made the playoffs
       - championship_pct: fraction of sims where each team won the Finals,
         via simulate_playoff_bracket() on top of that same simulated season
+      - Finals matchups: how often each pair of teams met in the Finals, and
+        how often each side won
 
-    Return: DataFrame with columns team_id, avg_wins, playoff_pct, championship_pct.
+    Return: (team results DataFrame with columns team_id, avg_wins, playoff_pct,
+    championship_pct; summarize_finals() DataFrame of Finals matchups).
     """
     rng = np.random.default_rng(seed)
     win_totals = []
     made_playoffs = []
     champions = []
+    finals = []
 
     for _ in range(n_simulations):
         final_wins = simulate_one_season(current_wins, remaining_games, win_probs, rng)
@@ -441,7 +445,11 @@ def run_simulations(
         playoff_teams = determine_playoff_teams(final_wins, teams_df)
         made_playoffs.append({team_id: team_id in playoff_teams for team_id in final_wins})
 
-        champions.append(simulate_playoff_bracket(final_wins, teams_df, pairwise_probs, rng))
+        champion, finalists = simulate_playoff_bracket(
+            final_wins, teams_df, pairwise_probs, rng
+        )
+        champions.append(champion)
+        finals.append((*finalists, champion))
 
     wins_df = pd.DataFrame(win_totals)
     playoffs_df = pd.DataFrame(made_playoffs)
@@ -450,12 +458,31 @@ def run_simulations(
         lambda team_id: champion_counts.get(team_id, 0) / n_simulations
     )
 
-    return pd.DataFrame({
+    results = pd.DataFrame({
         "team_id": wins_df.columns,
         "avg_wins": wins_df.mean().values,
         "playoff_pct": playoffs_df.mean().values,
         "championship_pct": championship_pct,
     })
+    return results, summarize_finals(finals, n_simulations)
+
+
+def summarize_finals(finals, n_simulations):
+    """finals: one (team, team, champion) tuple per simulated season. Groups them into
+    unordered matchups (team_a_id is the lower ID), each with how many simulations it
+    occurred in, its share of all simulations, and how many of those team_a won.
+    Return: DataFrame sorted from most to least likely matchup.
+    """
+    df = pd.DataFrame(finals, columns=["first", "second", "champion"])
+    df["team_a_id"] = df[["first", "second"]].min(axis=1)
+    df["team_b_id"] = df[["first", "second"]].max(axis=1)
+    df["team_a_won"] = df["champion"] == df["team_a_id"]
+    matchups = df.groupby(["team_a_id", "team_b_id"]).agg(
+        meetings=("champion", "size"), team_a_wins=("team_a_won", "sum"),
+    ).reset_index()
+    matchups["matchup_pct"] = matchups["meetings"] / n_simulations
+    return matchups.sort_values(["meetings", "team_a_id"], ascending=[False, True],
+                                ignore_index=True)
 
 
 def save_simulation_results(conn, results_df, season, n_simulations, batch_id=None):
@@ -497,6 +524,33 @@ def save_simulation_results(conn, results_df, season, n_simulations, batch_id=No
     return batch_id
 
 
+def save_finals(conn, finals_df, season, batch_id):
+    """Inserts one simulation run's Finals matchups into simulation_finals, under the
+    same batch_id as its season_simulations rows."""
+    sql = """
+        INSERT INTO simulation_finals (season, batch_id, team_a_id, team_b_id,
+                                       meetings, team_a_wins, matchup_pct)
+        VALUES (%(season)s, %(batch_id)s, %(team_a_id)s, %(team_b_id)s,
+                %(meetings)s, %(team_a_wins)s, %(matchup_pct)s)
+        ON CONFLICT (batch_id, team_a_id, team_b_id) DO UPDATE SET
+            meetings = EXCLUDED.meetings,
+            team_a_wins = EXCLUDED.team_a_wins,
+            matchup_pct = EXCLUDED.matchup_pct
+    """
+    records = [
+        {
+            "season": season, "batch_id": batch_id,
+            "team_a_id": int(row.team_a_id), "team_b_id": int(row.team_b_id),
+            "meetings": int(row.meetings), "team_a_wins": int(row.team_a_wins),
+            "matchup_pct": float(row.matchup_pct),
+        }
+        for row in finals_df.itertuples()
+    ]
+    with conn.cursor() as cur:
+        cur.executemany(sql, records)
+    conn.commit()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--season", required=True, help="e.g. 2024-25")
@@ -524,11 +578,12 @@ def main():
     snapshot = load_team_snapshot_features(conn, args.season, args.cutoff_date)
     pairwise_probs = compute_pairwise_win_probs(teams_df["team_id"], snapshot, model, scaler, fills)
 
-    results = run_simulations(
+    results, finals = run_simulations(
         current_wins, remaining, win_probs, teams_df, pairwise_probs,
         n_simulations=args.n_simulations,
     )
     batch_id = save_simulation_results(conn, results, args.season, args.n_simulations)
+    save_finals(conn, finals, args.season, batch_id)
 
     print(
         f"Simulated {args.n_simulations} seasons from {args.cutoff_date} onward. "
