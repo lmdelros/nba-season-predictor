@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { getSeasons, getSimulations, getStandings } from "./api"
+import { getFinals, getSeasons, getSimulations, getStandings } from "./api"
+import FinalsHeadline from "./components/FinalsHeadline"
 import SeasonSelector from "./components/SeasonSelector"
 import StandingsTable from "./components/StandingsTable"
 import PlayoffOdds from "./components/PlayoffOdds"
@@ -10,6 +11,7 @@ export default function App() {
   const [season, setSeason] = useState(null)
   const [standings, setStandings] = useState(null)
   const [simulations, setSimulations] = useState(null)
+  const [finals, setFinals] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -27,14 +29,16 @@ export default function App() {
     setSeason(nextSeason)
     setStandings(null)
     setSimulations(null)
+    setFinals(null)
   }
 
   useEffect(() => {
     if (!season) return
-    Promise.all([getStandings(season), getSimulations(season)])
-      .then(([standingsData, simulationsData]) => {
+    Promise.all([getStandings(season), getSimulations(season), getFinals(season)])
+      .then(([standingsData, simulationsData, finalsData]) => {
         setStandings(standingsData)
         setSimulations(simulationsData)
+        setFinals(finalsData)
       })
       .catch((err) => setError(err.message))
   }, [season])
@@ -54,6 +58,7 @@ export default function App() {
       {error && <p className="error">Couldn't load data: {error}</p>}
       {!error && !standings && <p className="loading">Loading…</p>}
 
+      {finals && <FinalsHeadline matchups={finals} />}
       {standings && <StandingsTable standings={standings} />}
       {simulations && <PlayoffOdds simulations={simulations} />}
     </div>

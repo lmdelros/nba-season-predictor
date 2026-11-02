@@ -188,3 +188,36 @@ section h2 {
   font-size: 0.8rem;
   text-align: right;
 }
+
+.finals-headline {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 2rem;
+}
+
+.finals-label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.finals-teams {
+  margin: 0.35rem 0;
+  font-size: 1.5rem;
+}
+
+.finals-vs {
+  color: var(--accent);
+  font-weight: 400;
+  margin: 0 0.35rem;
+}
+
+.finals-detail {
+  margin: 0;
+  color: var(--text-muted);
+}

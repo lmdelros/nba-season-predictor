@@ -29,3 +29,7 @@ export function getPredictions(season, gameId) {
   if (gameId) params.set("game_id", gameId)
   return getJSON(`/predictions?${params}`)
 }
+
+export function getFinals(season) {
+  return getJSON(`/simulations/finals?season=${encodeURIComponent(season)}`)
+}

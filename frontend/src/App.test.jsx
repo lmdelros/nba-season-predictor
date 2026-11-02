@@ -1,12 +1,13 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import App from "./App"
-import { getSeasons, getSimulations, getStandings } from "./api"
+import { getFinals, getSeasons, getSimulations, getStandings } from "./api"
 
 vi.mock("./api", () => ({
   getSeasons: vi.fn(),
   getStandings: vi.fn(),
   getSimulations: vi.fn(),
+  getFinals: vi.fn(),
 }))
 
 const standings = [
@@ -19,6 +20,14 @@ const simulations = [
   },
 ]
 
+const finals = [
+  {
+    batch_id: "b1", team_a_id: 1, team_a_abbreviation: "BOS", team_a_name: "Boston Celtics",
+    team_b_id: 2, team_b_abbreviation: "OKC", team_b_name: "Oklahoma City Thunder",
+    meetings: 2500, num_simulations: 10000, matchup_pct: 0.25, team_a_win_pct: 0.6,
+  },
+]
+
 describe("App", () => {
   beforeEach(() => {
     vi.resetAllMocks()
@@ -28,6 +37,9 @@ describe("App", () => {
     getSimulations.mockImplementation((season) =>
       Promise.resolve(season === "2025-26" ? simulations : []),
     )
+    getFinals.mockImplementation((season) =>
+      Promise.resolve(season === "2025-26" ? finals : []),
+    )
   })
 
   it("loads the newest season's standings and playoff odds", async () => {
@@ -36,6 +48,7 @@ describe("App", () => {
     expect(await screen.findByText("2025-26 season")).toBeInTheDocument()
     expect(await screen.findByText("Boston Celtics", { selector: "td" })).toBeInTheDocument()
     expect(screen.getByText("99%")).toBeInTheDocument()
+    expect(screen.getByText("Most likely NBA Finals")).toBeInTheDocument()
     expect(getStandings).toHaveBeenCalledWith("2025-26")
   })
 
@@ -50,6 +63,7 @@ describe("App", () => {
     ).toBeInTheDocument()
     expect(getStandings).toHaveBeenLastCalledWith("2024-25")
     expect(screen.queryByText("99%")).not.toBeInTheDocument()
+    expect(screen.queryByText("Most likely NBA Finals")).not.toBeInTheDocument()
   })
 
   it("shows an error when the API cannot be reached", async () => {
