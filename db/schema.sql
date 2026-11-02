@@ -153,6 +153,10 @@ CREATE TABLE IF NOT EXISTS season_simulations (
 
 CREATE INDEX IF NOT EXISTS idx_season_sims_batch ON season_simulations(batch_id);
 
+-- The date the run projected the season from (games before it were real results).
+-- Added after the table, so it is added here; runs saved before this have no date.
+ALTER TABLE season_simulations ADD COLUMN IF NOT EXISTS cutoff_date DATE;
+
 -- Finals matchups from one simulation run (same batch_id as its season_simulations
 -- rows): how many simulated seasons each pair met in the Finals, and how many of those
 -- team_a won. Each pair is stored once, with the lower team ID as team_a.
