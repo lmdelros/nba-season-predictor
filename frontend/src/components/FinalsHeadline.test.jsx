@@ -44,6 +44,12 @@ describe("FinalsHeadline", () => {
     ])
   })
 
+  it("says what date the projection was made from", () => {
+    render(<FinalsHeadline matchups={[{ ...matchup(0.3), cutoff_date: "2025-02-01" }]} />)
+
+    expect(screen.getByText("Projected as of Feb 1, 2025")).toBeInTheDocument()
+  })
+
   it("renders nothing when the run has no matchups", () => {
     const { container } = render(<FinalsHeadline matchups={[]} />)
 

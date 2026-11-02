@@ -1,3 +1,4 @@
+import { formatDate } from "../format"
 import TeamLogo from "./TeamLogo"
 
 export default function PlayoffOdds({ simulations }) {
@@ -17,6 +18,9 @@ export default function PlayoffOdds({ simulations }) {
     <section className="playoff-odds">
       <h2>Playoff Odds</h2>
       <p className="playoff-odds-subtitle">
+        {simulations[0].cutoff_date && (
+          <>Projected as of {formatDate(simulations[0].cutoff_date)}. </>
+        )}
         Monte Carlo simulation, {simulations[0]?.num_simulations?.toLocaleString()} runs
         (playoff odds + full bracket simulation for championship odds)
       </p>

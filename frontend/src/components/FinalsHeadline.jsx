@@ -1,3 +1,4 @@
+import { formatDate } from "../format"
 import TeamLogo from "./TeamLogo"
 
 const percent = (value) => `${(value * 100).toFixed(1)}%`
@@ -30,6 +31,9 @@ export default function FinalsHeadline({ matchups }) {
         Met in {percent(top.matchup_pct)} of {top.num_simulations.toLocaleString()} simulated
         seasons. {favorite} won {percent(favoriteWinPct)} of those Finals.
       </p>
+      {top.cutoff_date && (
+        <p className="finals-asof">Projected as of {formatDate(top.cutoff_date)}</p>
+      )}
     </section>
   )
 }

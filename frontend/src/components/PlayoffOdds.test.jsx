@@ -46,6 +46,19 @@ describe("PlayoffOdds", () => {
     expect(screen.getAllByText(/🏆/)).toHaveLength(1)
   })
 
+  it("says what date the projection was made from", () => {
+    const dated = simulations.map((team) => ({ ...team, cutoff_date: "2026-02-01" }))
+    render(<PlayoffOdds simulations={dated} />)
+
+    expect(screen.getByText(/Projected as of Feb 1, 2026\./)).toBeInTheDocument()
+  })
+
+  it("leaves out the date for runs saved without one", () => {
+    render(<PlayoffOdds simulations={simulations} />)
+
+    expect(screen.queryByText(/Projected as of/)).not.toBeInTheDocument()
+  })
+
   it("shows the number of simulation runs with a thousands separator", () => {
     render(<PlayoffOdds simulations={simulations} />)
 
