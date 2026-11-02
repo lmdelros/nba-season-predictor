@@ -43,7 +43,7 @@ flowchart LR
 |---|---|
 | **Python 3.12** | Data pipeline, models, simulation, and API |
 | **nba_api** | Downloads game logs, box scores, and award history from NBA.com |
-| **PostgreSQL 16** | Stores 13 tables of games, box scores, features, predictions, and simulation runs; a SQL view computes each team's season-to-date point margin with window functions |
+| **PostgreSQL 16** | Stores 14 tables of games, box scores, features, predictions, and simulation runs and their Finals matchups; a SQL view computes each team's season-to-date point margin with window functions |
 | **pandas, NumPy** | Feature engineering and simulation |
 | **scikit-learn** | Logistic regression win model, gradient boosting comparison, linear regression margin model, k-means player clustering |
 | **FastAPI** | REST API for standings, predictions, and simulation results |
@@ -116,7 +116,7 @@ Each team's entry looks like this (your `batch_id`, `run_at`, and odds will diff
 }
 ```
 
-Other endpoints: `/health`, `/seasons`, `/teams`, `/standings?season=`, and `/predictions?season=`.
+Other endpoints: `/health`, `/seasons`, `/teams`, `/standings?season=`, `/predictions?season=`, and `/simulations/finals?season=` (the most likely Finals matchups).
 
 To run individual pipeline steps, load more seasons, retrain models, or reproduce the evaluations, see [docs/pipeline.md](docs/pipeline.md).
 
