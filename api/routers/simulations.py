@@ -17,6 +17,7 @@ SIMULATIONS_SQL = """
         LIMIT 1
     )
     SELECT ss.team_id, t.abbreviation, t.full_name, ss.batch_id, ss.run_at, ss.num_simulations,
+           ss.cutoff_date,
            ss.avg_wins::float AS avg_wins,
            ss.playoff_pct::float AS playoff_pct,
            ss.championship_pct::float AS championship_pct
@@ -44,7 +45,7 @@ def get_simulations(
 # so the newest run decides: if it has no matchups, the result is an empty list.
 FINALS_SQL = """
     WITH target_batch AS (
-        SELECT batch_id, num_simulations FROM season_simulations
+        SELECT batch_id, num_simulations, cutoff_date FROM season_simulations
         WHERE season = %(season)s
           AND (%(batch_id)s::text IS NULL OR batch_id = %(batch_id)s)
         ORDER BY run_at DESC
@@ -53,7 +54,7 @@ FINALS_SQL = """
     SELECT sf.batch_id,
            sf.team_a_id, ta.abbreviation AS team_a_abbreviation, ta.full_name AS team_a_name,
            sf.team_b_id, tb.abbreviation AS team_b_abbreviation, tb.full_name AS team_b_name,
-           sf.meetings, tgt.num_simulations,
+           sf.meetings, tgt.num_simulations, tgt.cutoff_date,
            sf.matchup_pct::float AS matchup_pct,
            sf.team_a_wins::float / sf.meetings AS team_a_win_pct
     FROM simulation_finals sf

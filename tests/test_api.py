@@ -198,3 +198,28 @@ def test_finals_are_empty_when_the_latest_run_has_no_matchups(db, client):
 
     # The page shows the newest run's odds, so it must not mix in an older run's Finals.
     assert client.get("/simulations/finals", params={"season": SEASON}).json() == []
+
+
+def test_simulation_endpoints_report_the_projection_date(db, client):
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO season_simulations (season, team_id, batch_id, run_at, num_simulations, "
+            "avg_wins, playoff_pct, championship_pct, cutoff_date) "
+            "VALUES (%s, 9001, 'dated', %s, 1000, 50, 0.9, 0.5, '2099-02-01')",
+            (SEASON, LATER),
+        )
+    _insert_finals(db, "dated", [(9001, 9002, 400, 300)])
+
+    [team] = client.get("/simulations", params={"season": SEASON}).json()
+    [matchup] = client.get("/simulations/finals", params={"season": SEASON}).json()
+
+    assert team["cutoff_date"] == "2099-02-01"
+    assert matchup["cutoff_date"] == "2099-02-01"
+
+
+def test_runs_saved_before_dates_were_recorded_have_no_date(db, client):
+    _insert_simulations(db, [(9001, "undated", LATER, 50.0, 0.9, 0.5)])
+
+    [team] = client.get("/simulations", params={"season": SEASON}).json()
+
+    assert team["cutoff_date"] is None

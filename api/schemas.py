@@ -42,6 +42,7 @@ class SimulationOut(BaseModel):
     batch_id: str
     run_at: datetime
     num_simulations: int
+    cutoff_date: date | None
     avg_wins: float
     playoff_pct: float
     championship_pct: float | None
@@ -57,5 +58,6 @@ class FinalsMatchupOut(BaseModel):
     team_b_name: str
     meetings: int
     num_simulations: int
+    cutoff_date: date | None
     matchup_pct: float
     team_a_win_pct: float
