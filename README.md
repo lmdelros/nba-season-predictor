@@ -6,11 +6,14 @@ Predicts NBA game winners and simulates the rest of a season to project standing
 
 ![The web app showing 2025-26 standings and Monte Carlo playoff and championship odds](docs/screenshot.png)
 
+**Live demo:** http://3.148.147.49, hosted on AWS ([how it's deployed](docs/deployment.md))
+
 ## Highlights
 
 - **68.6% of games predicted correctly on a season the model never saw** (all 1,230 games of 2025-26), 13.2 points better than always picking the home team, with lower log loss and Brier score than every baseline. [Results](docs/results.md)
 - **Found and fixed data leakage in the season simulator.** The original backtest scored future games with features built from their real results, which inflated its accuracy (0.976 rank correlation). After freezing every feature at the cutoff date it measured 0.921, then improved to 0.949. [Backtest](docs/backtest.md)
 - **Leakage is guarded by tests.** Every feature, the simulator, and a SQL window-function view are tested by rewriting future results and asserting nothing earlier changes; each test was checked by injecting the bug on purpose.
+- **Deployed on AWS (EC2 and RDS).** The Docker stack runs on an EC2 server in front of a private, encrypted RDS PostgreSQL database that only that server can reach, over connections that require TLS. [Deployment](docs/deployment.md)
 - **Runs with one command.** Docker Compose starts PostgreSQL, a FastAPI service, and a React app served by nginx; a second command loads real data.
 - **50 automated tests in CI** on every push: Python and database tests against a real PostgreSQL instance, frontend tests and build, and a smoke test of the whole stack through nginx.
 
@@ -47,6 +50,7 @@ flowchart LR
 | **React 19 + Vite** | Web app showing standings and playoff odds |
 | **nginx** | Serves the built React app and forwards `/api` requests to FastAPI |
 | **Docker Compose** | Runs PostgreSQL, a schema migration step, the API, and the web app together |
+| **AWS (EC2, RDS, Elastic IP)** | Hosts the live app: EC2 runs the containers, RDS runs PostgreSQL privately, and an Elastic IP keeps the address fixed |
 | **pytest, Vitest** | Python, database, API, and frontend tests |
 | **GitHub Actions** | Runs lint, all tests, and a full-stack smoke test on every push |
 
@@ -175,10 +179,11 @@ npm run build
 - **The data download depends on NBA.com,** which can be slow and is reported to block requests from cloud servers.
 - **Applying `db/schema.sql` adds missing tables but not new columns** to tables that already exist.
 - **Player clusters are labeled by hand** after each fit, since k-means numbers clusters arbitrarily.
+- **The live demo uses HTTP, not HTTPS.** HTTPS needs a domain name and a certificate, which the deployment does not have yet.
 
 ## Project status
 
-Actively developed as a portfolio project. Planned next: a hosted deployment.
+Actively developed as a portfolio project, and deployed on AWS at http://3.148.147.49.
 
 ## Contributing
 
