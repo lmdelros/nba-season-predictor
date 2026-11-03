@@ -146,7 +146,7 @@ The simulation orders teams slightly better than the naive projection and found 
 
 **Point-margin model:** a linear regression on the original 13 features predicts the final margin within 12.11 points on average, against 14.32 for always predicting the average margin (2024-25, last 20% of the season, 262 games).
 
-**Award models (MVP, DPOY, ROY, MIP):** for each award, a logistic regression ranks every season's 20 most likely candidates, trained on 2010-11 through 2021-22. On the three held-out seasons (2022-23 through 2024-25) its top pick was the real winner 7 times out of 12: MVP 2 of 3, Defensive Player of the Year 1 of 3, Rookie of the Year 2 of 3, and Most Improved Player 2 of 3. Three seasons per award is a small sample, and the DPOY and MIP candidate lists leave out some real winners, which limits those two models. ([docs/pipeline.md](docs/pipeline.md#award-models))
+**Award models (MVP, DPOY, ROY, MIP):** for each award, a logistic regression ranks every season's 20 most likely candidates. Evaluated season by season from 2015-16 to 2024-25, each season predicted only from earlier seasons, the top pick was the real winner 19 times out of 40: MVP 7 of 10, Rookie of the Year 8 of 10, Defensive Player of the Year 3 of 10, and Most Improved Player 1 of 10. Each model's settings were chosen on the earlier seasons only; stronger regularization fixed overfitting in the Rookie of the Year model. Most Improved Player remains unreliable, and the Defensive Player of the Year shortlist misses two of the ten winners. ([docs/award_models.md](docs/award_models.md))
 
 ## Running tests
 

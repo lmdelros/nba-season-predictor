@@ -121,14 +121,14 @@ python -m models.train_roy --start-season 2010-11 --end-season 2024-25
 python -m models.train_mip --start-season 2010-11 --end-season 2024-25
 ```
 
-Results on 2022-23 through 2024-25 (top pick was the real winner):
+Each model's regularization strength and features were chosen by `python -m evaluation.evaluate_award_models`, which predicts every season from 2015-16 on using only earlier seasons; see [award_models.md](award_models.md) for the full comparison. Results on 2022-23 through 2024-25 from the training scripts above (top pick was the real winner):
 
 | Award | Correct | Notes |
 |---|---|---|
 | MVP | 2 of 3 | Missed 2022-23 (picked Nikola Jokić; Joel Embiid won) |
 | Defensive Player of the Year | 1 of 3 | Candidates are the top 20 in steals plus blocks, which misses some winners |
-| Rookie of the Year | 2 of 3 | Missed 2022-23 (Paolo Banchero) |
-| Most Improved Player | 2 of 3 | Missed 2024-25 (Dyson Daniels) |
+| Rookie of the Year | 3 of 3 | Stronger regularization fixed the previous model's 2022-23 miss (Paolo Banchero) |
+| Most Improved Player | 0 of 3 | Low confidence: the real winner usually ranks 4th to 7th of 20 with every setting tried |
 
 ## Streamlit dashboard
 
