@@ -117,7 +117,7 @@ Each team's entry looks like this (your `batch_id`, `run_at`, and odds will diff
 }
 ```
 
-Other endpoints: `/health`, `/seasons`, `/teams`, `/standings?season=`, `/predictions?season=`, and `/simulations/finals?season=` (the most likely Finals matchups).
+Other endpoints: `/health`, `/seasons`, `/teams`, `/standings?season=`, `/predictions?season=`, `/simulations/finals?season=` (the most likely Finals matchups), and `/awards?season=` (each award's winner and the model's top 3 picks, from models trained only on earlier seasons).
 
 To run individual pipeline steps, load more seasons, retrain models, or reproduce the evaluations, see [docs/pipeline.md](docs/pipeline.md).
 
