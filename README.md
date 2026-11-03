@@ -43,7 +43,7 @@ flowchart LR
 |---|---|
 | **Python 3.12** | Data pipeline, models, simulation, and API |
 | **nba_api** | Downloads game logs, box scores, and award history from NBA.com |
-| **PostgreSQL 16** | Stores 14 tables of games, box scores, features, predictions, and simulation runs and their Finals matchups; a SQL view computes each team's season-to-date point margin with window functions |
+| **PostgreSQL 16** | Stores 15 tables of games, box scores, features, predictions, simulation runs and their Finals matchups, and each season's real champion; a SQL view computes each team's season-to-date point margin with window functions |
 | **pandas, NumPy** | Feature engineering and simulation |
 | **scikit-learn** | Logistic regression win model, gradient boosting comparison, linear regression margin model, k-means player clustering |
 | **FastAPI** | REST API for standings, predictions, and simulation results |

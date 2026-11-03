@@ -43,6 +43,17 @@ for season in 2021-22 2022-23 2023-24 2024-25 2025-26; do
 done
 ```
 
+## Real champions
+
+Records each finished season's champion and Finals opponent from NBA.com's playoff game
+log into `season_results`, which the scorecard compares projections against. Playoff
+games are not added to `games`, so they never affect features, standings, or
+simulations. A season whose Finals are not finished is skipped.
+
+```bash
+python -m ingestion.pull_season_results --seasons 2021-22 2022-23 2023-24 2024-25 2025-26
+```
+
 ## Player clusters
 
 Groups players into playstyle archetypes with k-means. First print the elbow and silhouette diagnostics to choose `k` (this writes nothing):
