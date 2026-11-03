@@ -177,7 +177,15 @@ def freeze_remaining_features(remaining, snapshot, h2h):
     return remaining
 
 
-def predict_remaining(games, team_features, cutoff, history=None):
+def sharpen(probs, sharpness):
+    """Scales each probability's log-odds by sharpness: 1.0 leaves it unchanged, and
+    values above 1 move probabilities away from 0.5 (a 65% favorite becomes more likely),
+    which corrects a model that is too cautious."""
+    p = np.clip(np.asarray(probs, dtype=float), 1e-6, 1 - 1e-6)
+    return 1 / (1 + np.exp(-sharpness * np.log(p / (1 - p))))
+
+
+def predict_remaining(games, team_features, cutoff, history=None, sharpness=1.0):
     """Trains a fresh logistic regression on games strictly before the cutoff and
     predicts home-win probability for every game on/after it, using only
     information available at the cutoff. Pure (no database), so it can be
@@ -188,6 +196,7 @@ def predict_remaining(games, team_features, cutoff, history=None):
     history: optional load_training_data() rows from earlier, fully completed
     seasons, added to the training rows. They were all played before the
     cutoff, so they are known information.
+    sharpness: passed to sharpen(); 1.0 returns the model's probabilities unchanged.
     Return: (dict of {game_id: home_win_probability}, model, scaler, fills).
     """
     cutoff = pd.Timestamp(cutoff)
@@ -211,7 +220,7 @@ def predict_remaining(games, team_features, cutoff, history=None):
     model.fit(X_train, train_df["home_win"])
 
     X_remaining = scaler.transform(remaining_df[FEATURE_COLUMNS].astype(float))
-    probs = model.predict_proba(X_remaining)[:, 1]
+    probs = sharpen(model.predict_proba(X_remaining)[:, 1], sharpness)
 
     return dict(zip(remaining_df["game_id"], probs)), model, scaler, fills
 
@@ -226,7 +235,7 @@ def load_earlier_seasons(conn, season):
         return [row[0] for row in cur.fetchall()]
 
 
-def get_win_probabilities(conn, season, cutoff_date, use_history=True):
+def get_win_probabilities(conn, season, cutoff_date, use_history=True, sharpness=1.0):
     """Loads the season from the database and runs predict_remaining() at the cutoff.
     With use_history, every earlier season in the database is added to the training
     rows; without it, the model learns only from this season's games before the cutoff.
@@ -250,7 +259,7 @@ def get_win_probabilities(conn, season, cutoff_date, use_history=True):
     )
     return predict_remaining(
         load_training_data(conn, season), load_team_features(conn, season), cutoff_date,
-        history,
+        history, sharpness,
     )
 
 
@@ -294,7 +303,7 @@ def build_matchup_features(home_id, away_id, snapshot, fills):
     }
 
 
-def compute_pairwise_win_probs(team_ids, snapshot, model, scaler, fills):
+def compute_pairwise_win_probs(team_ids, snapshot, model, scaler, fills, sharpness=1.0):
     """P(home team wins) for every ordered pair of teams that could plausibly
     meet in the playoffs, scored once with the same trained model used for
     the regular season — team snapshots are fixed, so this doesn't need to
@@ -312,7 +321,7 @@ def compute_pairwise_win_probs(team_ids, snapshot, model, scaler, fills):
 
     df = apply_imputer(pd.DataFrame(rows), fills)
     X = scaler.transform(df[FEATURE_COLUMNS].astype(float))
-    probs = model.predict_proba(X)[:, 1]
+    probs = sharpen(model.predict_proba(X)[:, 1], sharpness)
     return dict(zip(pairs, probs))
 
 
