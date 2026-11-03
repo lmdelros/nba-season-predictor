@@ -223,3 +223,91 @@ def test_runs_saved_before_dates_were_recorded_have_no_date(db, client):
     [team] = client.get("/simulations", params={"season": SEASON}).json()
 
     assert team["cutoff_date"] is None
+
+
+def _insert_award_players(db, players):
+    """players: (player_id, team_id, season points); made-up IDs, with season totals over
+    70 games for SEASON, as player_season_stats stores them."""
+    with db.cursor() as cur:
+        cur.executemany("INSERT INTO players (player_id, full_name) VALUES (%s, %s)",
+                        [(p, f"Test Player {p}") for p, _, _ in players])
+        cur.executemany(
+            "INSERT INTO player_season_stats (player_id, season, team_id, games_played, "
+            "points, rebounds, assists, steals, blocks) "
+            "VALUES (%s, %s, %s, 70, %s, 560, 420, 105, 35)",
+            [(p, SEASON, team, pts) for p, team, pts in players],
+        )
+
+
+def _insert_award_predictions(db, rows):
+    """rows: (award_type, player_id, model_version, predicted_prob)."""
+    with db.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO award_predictions (season, award_type, player_id, model_version, "
+            "predicted_prob) VALUES (%s, %s, %s, %s, %s)",
+            [(SEASON, *r) for r in rows],
+        )
+
+
+def _insert_award_winner(db, award_type, player_id):
+    with db.cursor() as cur:
+        cur.execute("INSERT INTO player_awards (player_id, season, award_type) "
+                    "VALUES (%s, %s, %s)", (player_id, SEASON, award_type))
+
+
+def test_awards_show_the_winner_and_the_top_three_picks_in_order(db, client):
+    _insert_award_players(db, [(99901, 9001, 2100), (99902, 9002, 1960),
+                               (99903, 9003, 1750), (99904, 9004, 1400)])
+    _insert_award_predictions(db, [
+        ("mvp", 99904, "mvp_forward_v1", 0.10),
+        ("mvp", 99902, "mvp_forward_v1", 0.90),
+        ("mvp", 99901, "mvp_forward_v1", 0.60),
+        ("mvp", 99903, "mvp_forward_v1", 0.40),
+    ])
+    _insert_award_winner(db, "mvp", 99901)
+
+    [mvp] = client.get("/awards", params={"season": SEASON}).json()
+
+    assert (mvp["award_type"], mvp["award_name"]) == ("mvp", "Most Valuable Player")
+    assert mvp["low_confidence"] is False
+    assert [p["player_id"] for p in mvp["picks"]] == [99902, 99901, 99903]
+    assert [p["rank"] for p in mvp["picks"]] == [1, 2, 3]
+    assert [p["won"] for p in mvp["picks"]] == [False, True, False]
+    winner = mvp["winner"]
+    assert (winner["player_id"], winner["team_id"], winner["team_abbreviation"]) == (
+        99901, 9001, "T9001")
+    # Season totals over 70 games, shown per game.
+    assert (winner["points_per_game"], winner["rebounds_per_game"],
+            winner["assists_per_game"], winner["steals_per_game"],
+            winner["blocks_per_game"]) == (30.0, 8.0, 6.0, 1.5, 0.5)
+
+
+def test_awards_ignore_picks_from_other_model_versions(db, client):
+    _insert_award_players(db, [(99901, 9001, 2100), (99902, 9002, 1960)])
+    _insert_award_predictions(db, [
+        ("mvp", 99901, "mvp_forward_v1", 0.30),
+        # Saved by a training script whose model saw this season: never shown.
+        ("mvp", 99902, "mvp_logreg_v2", 0.99),
+    ])
+
+    [mvp] = client.get("/awards", params={"season": SEASON}).json()
+
+    assert [p["player_id"] for p in mvp["picks"]] == [99901]
+
+
+def test_awards_not_yet_given_have_no_winner_and_unknown_results(db, client):
+    _insert_award_players(db, [(99901, 9001, 840)])
+    _insert_award_predictions(db, [("mip", 99901, "mip_forward_v1", 0.50)])
+
+    awards = client.get("/awards", params={"season": SEASON}).json()
+
+    # Only awards with a winner or picks are listed; MIP is flagged as unreliable.
+    [mip] = awards
+    assert mip["award_type"] == "mip"
+    assert mip["low_confidence"] is True
+    assert mip["winner"] is None
+    assert mip["picks"][0]["won"] is None
+
+
+def test_awards_reject_a_malformed_season(client):
+    assert client.get("/awards", params={"season": "2099"}).status_code == 422
