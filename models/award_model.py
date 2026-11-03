@@ -102,6 +102,19 @@ def train_model(train_df, feature_columns=FEATURE_COLUMNS, c=1.0):
     return model, scaler
 
 
+def forward_chain_scores(pool, feature_columns, c, first_season):
+    """Scores every candidate of each season from first_season on with a model trained
+    only on earlier seasons, so no season's picks come from a model that saw it.
+    Return: the scored seasons' rows with a predicted_prob column."""
+    scored = []
+    for season in sorted(s for s in pool["season"].unique() if s >= first_season):
+        train, test = pool[pool["season"] < season], pool[pool["season"] == season]
+        model, scaler = train_model(train, feature_columns=feature_columns, c=c)
+        probs = model.predict_proba(scaler.transform(test[feature_columns].astype(float)))[:, 1]
+        scored.append(test.assign(predicted_prob=probs))
+    return pd.concat(scored, ignore_index=True)
+
+
 def evaluate(model, scaler, test_df, feature_columns=FEATURE_COLUMNS):
     """The metric that actually matters here: per season, is the model's
     #1-ranked candidate the real winner? Raw accuracy/log loss are easy to
