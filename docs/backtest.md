@@ -9,6 +9,6 @@ The win model is trained on 2021-22, 2022-23, 2023-24, 2024-25 plus the 729 game
 | Method | Rank correlation | Mean abs. error (wins) | Bias (wins) |
 |---|---|---|---|
 | Keep cutoff win % for all 82 games | 0.943 | 3.54 | +0.03 |
-| Monte Carlo simulation (this project) | 0.949 | 4.02 | +0.00 |
+| Monte Carlo simulation (this project) | 0.943 | 3.63 | +0.00 |
 
 Playoff teams given a 50%+ chance by the simulation: 14 of the 16 real playoff teams (top 8 per conference by wins; the play-in tournament is not modeled).

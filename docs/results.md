@@ -13,8 +13,8 @@ Train: 4920 games (2021-10-19 to 2025-04-13). Test: 1230 games (2025-10-21 to 20
 | Home team always wins | 55.4% | 0.687 | 0.247 |
 | Better record so far wins | 66.9% | 0.631 | 0.220 |
 | Logistic regression, original 13 features | 65.3% | 0.622 | 0.216 |
-| Gradient boosting, same features | 65.1% | 0.628 | 0.218 |
-| Logistic regression (this project) | 68.6% | 0.608 | 0.209 |
+| Gradient boosting, same features | 67.4% | 0.631 | 0.217 |
+| Logistic regression (this project) | 68.5% | 0.599 | 0.206 |
 
 ### Across seasons, one training season: train 2024-25, test 2025-26
 
@@ -27,8 +27,8 @@ Train: 1230 games (2024-10-22 to 2025-04-13). Test: 1230 games (2025-10-21 to 20
 | Home team always wins | 55.4% | 0.687 | 0.247 |
 | Better record so far wins | 66.9% | 0.628 | 0.218 |
 | Logistic regression, original 13 features | 66.4% | 0.625 | 0.217 |
-| Gradient boosting, same features | 60.8% | 0.715 | 0.249 |
-| Logistic regression (this project) | 68.2% | 0.607 | 0.209 |
+| Gradient boosting, same features | 63.8% | 0.699 | 0.236 |
+| Logistic regression (this project) | 67.6% | 0.598 | 0.206 |
 
 ### Within one season: 2024-25, last 20% of dates held out
 
@@ -41,5 +41,5 @@ Train: 968 games (2024-10-22 to 2025-03-10). Test: 262 games (2025-03-11 to 2025
 | Home team always wins | 53.4% | 0.691 | 0.249 |
 | Better record so far wins | 70.6% | 0.615 | 0.212 |
 | Logistic regression, original 13 features | 70.6% | 0.571 | 0.193 |
-| Gradient boosting, same features | 61.8% | 0.737 | 0.248 |
-| Logistic regression (this project) | 68.3% | 0.598 | 0.206 |
+| Gradient boosting, same features | 61.8% | 0.746 | 0.257 |
+| Logistic regression (this project) | 68.7% | 0.585 | 0.200 |
