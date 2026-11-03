@@ -8,6 +8,14 @@ import argparse
 
 from models.award_model import run
 
+# Settings chosen by evaluation/evaluate_award_models.py on the 2015-16 to 2021-22
+# seasons (see docs/award_models.md).
+FEATURE_COLUMNS = [
+    "points_per_game", "rebounds_per_game", "assists_per_game",
+    "plus_minus_per_game", "team_win_pct",
+]
+C = 0.1
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -17,9 +25,9 @@ def main():
     args = parser.parse_args()
 
     run(
-        award_type="mvp", rank_by="points", model_version="mvp_logreg_v1",
+        award_type="mvp", rank_by="points", model_version="mvp_logreg_v2",
         start_season=args.start_season, end_season=args.end_season,
-        test_seasons=args.test_seasons,
+        test_seasons=args.test_seasons, feature_columns=FEATURE_COLUMNS, c=C,
     )
 
 

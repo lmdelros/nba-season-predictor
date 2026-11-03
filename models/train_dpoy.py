@@ -8,6 +8,10 @@ import argparse
 
 from models.award_model import run
 
+# Settings chosen by evaluation/evaluate_award_models.py on the 2015-16 to 2021-22
+# seasons (see docs/award_models.md).
+C = 0.1
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -17,9 +21,9 @@ def main():
     args = parser.parse_args()
 
     run(
-        award_type="dpoy", rank_by="stocks", model_version="dpoy_logreg_v1",
+        award_type="dpoy", rank_by="stocks", model_version="dpoy_logreg_v2",
         start_season=args.start_season, end_season=args.end_season,
-        test_seasons=args.test_seasons,
+        test_seasons=args.test_seasons, c=C,
     )
 
 

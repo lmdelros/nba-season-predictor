@@ -14,6 +14,11 @@ from models.award_model import run
 
 CANDIDATES_PER_SEASON = 20
 
+# Settings chosen by evaluation/evaluate_award_models.py on the 2015-16 to 2021-22
+# seasons (see docs/award_models.md).
+# MIP stays weak with every setting tried; treat its picks as low confidence.
+C = 0.01
+
 FEATURE_COLUMNS = [
     "points_per_game", "ppg_delta",
     "rebounds_per_game", "reb_delta",
@@ -85,10 +90,10 @@ def main():
     args = parser.parse_args()
 
     run(
-        award_type="mip", rank_by=None, model_version="mip_logreg_v1",
+        award_type="mip", rank_by=None, model_version="mip_logreg_v2",
         start_season=args.start_season, end_season=args.end_season,
         test_seasons=args.test_seasons,
-        feature_columns=FEATURE_COLUMNS, load_fn=load_mip_candidate_pool,
+        feature_columns=FEATURE_COLUMNS, load_fn=load_mip_candidate_pool, c=C,
     )
 
 

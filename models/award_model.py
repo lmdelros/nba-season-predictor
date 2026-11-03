@@ -88,14 +88,16 @@ def load_candidate_pool(conn, seasons, award_type, rank_by, rookies_only=False):
     return df
 
 
-def train_model(train_df, feature_columns=FEATURE_COLUMNS):
+def train_model(train_df, feature_columns=FEATURE_COLUMNS, c=1.0):
+    """c is the regularization strength: smaller values keep the model simpler, which
+    matters with only about a dozen winners to learn from."""
     X_train = train_df[feature_columns].astype(float)
     y_train = train_df["is_winner"]
 
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
 
-    model = LogisticRegression(max_iter=1000, class_weight="balanced")
+    model = LogisticRegression(max_iter=1000, class_weight="balanced", C=c)
     model.fit(X_train_scaled, y_train)
     return model, scaler
 
@@ -145,7 +147,7 @@ def save_predictions(conn, test_df, award_type, model_version):
 
 
 def run(award_type, rank_by, model_version, start_season, end_season, test_seasons,
-        rookies_only=False, feature_columns=FEATURE_COLUMNS, load_fn=None):
+        rookies_only=False, feature_columns=FEATURE_COLUMNS, load_fn=None, c=1.0):
     """load_fn, if given, replaces load_candidate_pool(conn, seasons, award_type,
     rank_by, rookies_only=rookies_only) — for awards like MIP whose candidate
     pool isn't "top N by some stat this season" but needs its own cross-season
@@ -172,7 +174,7 @@ def run(award_type, rank_by, model_version, start_season, end_season, test_seaso
     print(f"Train rows: {len(train_df)} ({train_df['is_winner'].sum()} winners)")
     print(f"Test rows:  {len(test_df)} ({test_df['is_winner'].sum()} winners)\n")
 
-    model, scaler = train_model(train_df, feature_columns=feature_columns)
+    model, scaler = train_model(train_df, feature_columns=feature_columns, c=c)
     scored_test_df = evaluate(model, scaler, test_df, feature_columns=feature_columns)
     save_predictions(conn, scored_test_df, award_type, model_version)
 
