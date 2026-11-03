@@ -264,3 +264,154 @@ section h2 {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+.awards-subtitle {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: -0.5rem;
+}
+
+.award-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 700px) {
+  .award-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Team color fades into the panel color; a card with no winner yet is plain panel. */
+.award-card {
+  --team-color: var(--panel);
+  background: linear-gradient(135deg, var(--team-color) 0%, var(--team-color) 45%, var(--panel) 100%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  overflow: hidden;
+}
+
+.award-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.award-card-text {
+  min-width: 0;
+}
+
+.award-name {
+  margin: 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.award-low-confidence {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.award-winner {
+  margin: 0.3rem 0 0.15rem;
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.award-team {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.award-stats {
+  display: flex;
+  gap: 1.25rem;
+  margin: 0.75rem 0 0;
+}
+
+/* The label comes first in the markup (dt before dd) but shows under the number. */
+.award-stats div {
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.award-stats dd {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.award-stats dt {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.award-art {
+  flex-shrink: 0;
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  object-fit: contain;
+}
+
+.award-picks {
+  margin-top: 0.9rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.award-picks-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.award-picks ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.award-pick {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.15rem 0;
+  font-size: 0.9rem;
+}
+
+.award-pick-rank {
+  width: 1.6rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+
+.award-pick-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.award-pick.won .award-pick-name {
+  font-weight: 700;
+}
+
+.award-pick-won {
+  color: #7ee0a1;
+  font-weight: 700;
+}

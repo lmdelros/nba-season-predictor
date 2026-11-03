@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { getFinals, getSeasons, getSimulations, getStandings } from "./api"
+import { getAwards, getFinals, getSeasons, getSimulations, getStandings } from "./api"
+import AwardsSection from "./components/AwardsSection"
 import FinalsHeadline from "./components/FinalsHeadline"
 import SeasonSelector from "./components/SeasonSelector"
 import StandingsTable from "./components/StandingsTable"
@@ -12,6 +13,7 @@ export default function App() {
   const [standings, setStandings] = useState(null)
   const [simulations, setSimulations] = useState(null)
   const [finals, setFinals] = useState(null)
+  const [awards, setAwards] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -30,15 +32,19 @@ export default function App() {
     setStandings(null)
     setSimulations(null)
     setFinals(null)
+    setAwards(null)
   }
 
   useEffect(() => {
     if (!season) return
-    Promise.all([getStandings(season), getSimulations(season), getFinals(season)])
-      .then(([standingsData, simulationsData, finalsData]) => {
+    Promise.all([
+      getStandings(season), getSimulations(season), getFinals(season), getAwards(season),
+    ])
+      .then(([standingsData, simulationsData, finalsData, awardsData]) => {
         setStandings(standingsData)
         setSimulations(simulationsData)
         setFinals(finalsData)
+        setAwards(awardsData)
       })
       .catch((err) => setError(err.message))
   }, [season])
@@ -61,6 +67,7 @@ export default function App() {
       {finals && <FinalsHeadline matchups={finals} />}
       {standings && <StandingsTable standings={standings} />}
       {simulations && <PlayoffOdds simulations={simulations} />}
+      {awards && <AwardsSection awards={awards} />}
     </div>
   )
 }

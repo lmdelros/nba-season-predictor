@@ -33,3 +33,7 @@ export function getPredictions(season, gameId) {
 export function getFinals(season) {
   return getJSON(`/simulations/finals?season=${encodeURIComponent(season)}`)
 }
+
+export function getAwards(season) {
+  return getJSON(`/awards?season=${encodeURIComponent(season)}`)
+}
