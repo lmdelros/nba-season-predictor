@@ -1,11 +1,12 @@
 # Scores each season's newest dated simulation run against what actually happened: the
-# probability it gave the real champion and Finals pairing, and how compressed its
-# projected win totals were. Reads from the database only. Run from the repo root:
+# probability it gave the real champion and Finals pairing, and whether its projected
+# win totals were too cautious. Reads from the database only. Run from the repo root:
 #   python -m evaluation.score_title_odds --output docs/title_odds.md
 import argparse
 import math
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from simulation.monte_carlo import get_db_connection
@@ -43,14 +44,13 @@ def finals_score(matchups, team_a, team_b):
     return share, int((matchups["matchup_pct"] > share).sum()) + 1
 
 
-def compression(projected, actual):
-    """Spread ratio (std of projected / std of actual win totals; below 1 means projections
-    are squeezed toward the middle) and the mean error for the ten best and ten worst
-    teams by actual wins (positive means projected too high)."""
-    df = pd.DataFrame({"projected": projected, "actual": actual}).sort_values("actual")
-    error = df["projected"] - df["actual"]
-    return (df["projected"].std() / df["actual"].std(),
-            float(error.tail(10).mean()), float(error.head(10).mean()))
+def calibration_slope(projected, actual):
+    """Slope of actual on projected values. 1.0 means teams finished where they were
+    projected on average; above 1 means projections were too cautious (teams projected
+    above average did even better, and teams below did even worse). Regressing actual on
+    projected, not the reverse, keeps luck in the outcome from biasing the slope."""
+    projected, actual = np.asarray(projected, dtype=float), np.asarray(actual, dtype=float)
+    return float(np.polyfit(projected, actual, 1)[0])
 
 
 def load_season(conn, run):
@@ -93,9 +93,11 @@ def score_runs(conn):
         prob, rank, loss = champion_score(teams, outcome.champion_team_id)
         finals_share, finals_rank = finals_score(
             matchups, outcome.champion_team_id, outcome.runner_up_team_id)
-        pace = teams["cutoff_wins"] / teams["cutoff_games"] * GAMES_PER_SEASON
-        sim_spread, sim_top, sim_bottom = compression(teams["avg_wins"], teams["final_wins"])
-        pace_spread, pace_top, pace_bottom = compression(pace, teams["final_wins"])
+        # Wins after the cutoff: what each projection actually had to predict.
+        actual_rest = teams["final_wins"] - teams["cutoff_wins"]
+        sim_rest = teams["avg_wins"] - teams["cutoff_wins"]
+        remaining_games = GAMES_PER_SEASON - teams["cutoff_games"]
+        pace_rest = teams["cutoff_wins"] / teams["cutoff_games"] * remaining_games
         favorite = teams.loc[teams["championship_pct"].idxmax()]
         rows.append({
             "season": run.season, "cutoff": run.cutoff_date,
@@ -104,8 +106,8 @@ def score_runs(conn):
             "champion_prob": prob, "champion_rank": rank, "champion_log_loss": loss,
             "favorite": favorite["abbreviation"], "favorite_prob": favorite["championship_pct"],
             "finals_share": finals_share, "finals_rank": finals_rank,
-            "sim_spread": sim_spread, "sim_top": sim_top, "sim_bottom": sim_bottom,
-            "pace_spread": pace_spread, "pace_top": pace_top, "pace_bottom": pace_bottom,
+            "sim_rest": sim_rest.to_numpy(), "pace_rest": pace_rest.to_numpy(),
+            "actual_rest": actual_rest.to_numpy(),
         })
     return pd.DataFrame(rows)
 
@@ -137,21 +139,23 @@ def to_markdown(df):
         f"{df['champion_log_loss'].mean():.3f}, against {uniform_loss:.3f} for giving all "
         f"{TEAMS} teams equal odds (lower is better).",
         "",
-        "### Compression of projected win totals",
+        "### Calibration of projected wins after the cutoff",
         "",
-        "Spread ratio is the spread of projected win totals divided by the spread of real "
-        "ones; below 1 means projections are squeezed toward .500. The error columns are the "
-        "mean projected-minus-actual wins for the ten best and ten worst teams.",
+        "Each team's real wins after the cutoff regressed on its projected wins after the "
+        "cutoff. A slope of 1.0 means well calibrated; above 1 means the projections were "
+        "too cautious (strong teams underrated, weak teams overrated). The comparison "
+        "projection keeps each team's cutoff win percentage for its remaining games.",
         "",
-        "| Season | Simulation spread | Ten best | Ten worst "
-        "| Keep-cutoff-win% spread | Ten best | Ten worst |",
-        "|---|---|---|---|---|---|---|",
+        "| Season | Simulation slope | Keep-cutoff-win% slope |",
+        "|---|---|---|",
     ]
     for r in df.itertuples():
-        lines.append(
-            f"| {r.season} | {r.sim_spread:.2f} | {r.sim_top:+.1f} | {r.sim_bottom:+.1f} "
-            f"| {r.pace_spread:.2f} | {r.pace_top:+.1f} | {r.pace_bottom:+.1f} |"
-        )
+        lines.append(f"| {r.season} | {calibration_slope(r.sim_rest, r.actual_rest):.2f} "
+                     f"| {calibration_slope(r.pace_rest, r.actual_rest):.2f} |")
+    actual = np.concatenate(df["actual_rest"].to_list())
+    pooled_sim = calibration_slope(np.concatenate(df["sim_rest"].to_list()), actual)
+    pooled_pace = calibration_slope(np.concatenate(df["pace_rest"].to_list()), actual)
+    lines.append(f"| All seasons | {pooled_sim:.2f} | {pooled_pace:.2f} |")
     return "\n".join(lines)
 
 

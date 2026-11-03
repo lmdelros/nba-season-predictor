@@ -5,8 +5,8 @@ import pytest
 
 from evaluation.score_title_odds import (
     MIN_PROBABILITY,
+    calibration_slope,
     champion_score,
-    compression,
     finals_score,
 )
 
@@ -38,12 +38,9 @@ def test_finals_score_finds_the_pairing_in_either_order():
     assert finals_score(matchups, 4, 1) == (0.0, None)
 
 
-def test_compression_detects_projections_squeezed_toward_the_middle():
-    actual = pd.Series(range(20, 70, 2))
-    squeezed = 45 + (actual - 45) * 0.5
+def test_calibration_slope_detects_projections_that_are_too_cautious():
+    actual = pd.Series(range(5, 30))
+    cautious = 17 + (actual - 17) * 0.5
 
-    spread, best_error, worst_error = compression(squeezed, actual)
-
-    assert spread == pytest.approx(0.5)
-    assert best_error < 0 < worst_error
-    assert compression(actual, actual)[0] == pytest.approx(1.0)
+    assert calibration_slope(cautious, actual) == pytest.approx(2.0)
+    assert calibration_slope(actual, actual) == pytest.approx(1.0)
