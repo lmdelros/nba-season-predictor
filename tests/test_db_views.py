@@ -76,6 +76,25 @@ def test_scheduled_games_do_not_count(db):
     assert margins[(990204, 9001)] == 3.0
 
 
+def test_games_played_counts_earlier_played_games_only(db):
+    day = date(2099, 10, 20)
+    insert_games(db, [
+        (990401, SEASON, day, 9001, 9002, 110, 100),
+        (990402, SEASON, day + timedelta(1), 9001, 9002, None, None),      # not played
+        (990403, SEASON, day + timedelta(2), 9002, 9001, 96, 100),
+        (990404, SEASON, day + timedelta(3), 9001, 9002, 101, 99),
+    ])
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT game_id, games_played_before FROM team_game_form WHERE team_id = 9001 "
+            "AND game_id BETWEEN 990401 AND 990404 ORDER BY game_id"
+        )
+        counts = dict(cur.fetchall())
+
+    # The scheduled game is never counted, and a game never counts itself.
+    assert counts == {990401: 0, 990402: 1, 990403: 1, 990404: 2}
+
+
 def test_margin_resets_each_season(db):
     insert_games(db, [
         (990301, "2098-99", date(2099, 4, 10), 9001, 9002, 120, 100),
