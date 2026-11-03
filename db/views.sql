@@ -3,9 +3,10 @@
 -- for an existing database, apply it with:
 --   docker exec -i nba-predictor-db psql -U nba -d nba_predictor < db/views.sql
 
--- Each team's average point margin over its earlier games of the season, as of each game.
--- Computed here rather than in features/build_features.py so it always reflects the
--- current games table, with no stored column to backfill.
+-- Each team's average point margin over its earlier games of the season, as of each game,
+-- and how many played games that average is based on (the model shrinks margins based on
+-- few games toward zero). Computed here rather than in features/build_features.py so it
+-- always reflects the current games table, with no stored column to backfill.
 CREATE OR REPLACE VIEW team_game_form AS
 WITH team_games AS (
     -- One row per team per game, seen from that team's side.
@@ -20,12 +21,15 @@ WITH team_games AS (
 SELECT
     game_id,
     team_id,
-    -- The frame ends one row before the current game, so a game's own result never
-    -- counts toward its feature (the SQL equivalent of pandas' shift(1)). NULL for a
-    -- team's first game of the season.
-    AVG(margin) OVER (
-        PARTITION BY season, team_id
-        ORDER BY game_date, game_id
-        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-    )::float AS season_avg_margin
-FROM team_games;
+    -- NULL for a team's first game of the season.
+    AVG(margin) OVER earlier_games::float AS season_avg_margin,
+    -- count() skips NULL margins, so scheduled (unplayed) games are not counted.
+    COUNT(margin) OVER earlier_games AS games_played_before
+FROM team_games
+-- The frame ends one row before the current game, so a game's own result never counts
+-- toward its features (the SQL equivalent of pandas' shift(1)).
+WINDOW earlier_games AS (
+    PARTITION BY season, team_id
+    ORDER BY game_date, game_id
+    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+);
