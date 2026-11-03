@@ -48,7 +48,7 @@ flowchart LR
 | **pandas, NumPy** | Feature engineering and simulation |
 | **scikit-learn** | Logistic regression win model, gradient boosting comparison, linear regression margin model, k-means player clustering |
 | **FastAPI** | REST API for standings, predictions, and simulation results |
-| **React 19 + Vite** | Web app showing standings and playoff odds |
+| **React 19 + Vite** | Web app showing the most likely Finals, standings, playoff odds, and award cards |
 | **nginx** | Serves the built React app and forwards `/api` requests to FastAPI |
 | **Docker Compose** | Runs PostgreSQL, a schema migration step, the API, and the web app together |
 | **AWS (EC2, RDS, Elastic IP)** | Hosts the live app: EC2 runs the containers, RDS runs PostgreSQL privately, and an Elastic IP keeps the address fixed |
@@ -147,7 +147,7 @@ The simulation matches the naive projection's ordering and comes within 0.1 wins
 
 **Point-margin model:** a linear regression on the original 13 features predicts the final margin within 12.11 points on average, against 14.32 for always predicting the average margin (2024-25, last 20% of the season, 262 games).
 
-**Award models (MVP, DPOY, ROY, MIP):** for each award, a logistic regression ranks every season's 20 most likely candidates. Evaluated season by season from 2015-16 to 2024-25, each season predicted only from earlier seasons, the top pick was the real winner 19 times out of 40: MVP 7 of 10, Rookie of the Year 8 of 10, Defensive Player of the Year 3 of 10, and Most Improved Player 1 of 10. Each model's settings were chosen on the earlier seasons only; stronger regularization fixed overfitting in the Rookie of the Year model. Most Improved Player remains unreliable, and the Defensive Player of the Year shortlist misses two of the ten winners. ([docs/award_models.md](docs/award_models.md))
+**Award models (MVP, DPOY, ROY, MIP):** for each award, a logistic regression ranks every season's 20 most likely candidates. Evaluated season by season from 2015-16 to 2024-25, each season predicted only from earlier seasons, the top pick was the real winner 19 times out of 40: MVP 7 of 10, Rookie of the Year 8 of 10, Defensive Player of the Year 3 of 10, and Most Improved Player 1 of 10. Each model's settings were chosen on the earlier seasons only; stronger regularization fixed overfitting in the Rookie of the Year model. Most Improved Player remains unreliable, and the Defensive Player of the Year shortlist misses two of the ten winners. On 2025-26, a season no setting was chosen on, three of the four real winners were in the model's top 3 and two were its first pick. ([docs/award_models.md](docs/award_models.md))
 
 ## Running tests
 
