@@ -4,7 +4,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.db import get_db
-from api.routers import predictions, seasons, simulations, standings, teams
+from api.routers import awards, predictions, seasons, simulations, standings, teams
 
 app = FastAPI(title="nba-season-predictor API")
 
@@ -21,6 +21,7 @@ app.include_router(teams.router)
 app.include_router(standings.router)
 app.include_router(predictions.router)
 app.include_router(simulations.router)
+app.include_router(awards.router)
 
 
 @app.get("/health")

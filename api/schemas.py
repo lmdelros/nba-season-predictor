@@ -48,6 +48,33 @@ class SimulationOut(BaseModel):
     championship_pct: float | None
 
 
+class AwardPlayerOut(BaseModel):
+    player_id: int
+    full_name: str
+    team_id: int | None
+    team_abbreviation: str | None
+    team_name: str | None
+    games_played: int | None
+    points_per_game: float | None
+    rebounds_per_game: float | None
+    assists_per_game: float | None
+    steals_per_game: float | None
+    blocks_per_game: float | None
+
+
+class AwardPickOut(AwardPlayerOut):
+    rank: int
+    won: bool | None
+
+
+class AwardOut(BaseModel):
+    award_type: str
+    award_name: str
+    low_confidence: bool
+    winner: AwardPlayerOut | None
+    picks: list[AwardPickOut]
+
+
 class FinalsMatchupOut(BaseModel):
     batch_id: str
     team_a_id: int
