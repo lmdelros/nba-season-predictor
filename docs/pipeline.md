@@ -141,6 +141,23 @@ Each model's regularization strength and features were chosen by `python -m eval
 | Rookie of the Year | 3 of 3 | Stronger regularization fixed the previous model's 2022-23 miss (Paolo Banchero) |
 | Most Improved Player | 0 of 3 | Low confidence: the real winner usually ranks 4th to 7th of 20 with every setting tried |
 
+### Picks for the site
+
+The training scripts above score their held-out seasons with one model trained before all of them. The picks the site shows come from `models.predict_awards` instead: every season from 2015-16 on is scored by the chosen model trained only on the seasons before it, so no pick comes from a model that saw its season. They are saved under the model version `<award>_forward_v1`. Pull award data through 2025-26 first (`--end-season 2025-26` in the command above), then run:
+
+```bash
+python -m models.predict_awards --start-season 2010-11 --first-predicted 2015-16 --end-season 2025-26
+```
+
+On 2015-16 through 2024-25 the top pick won MVP 7 of 10, Defensive Player of the Year 3 of 10, Rookie of the Year 8 of 10, and Most Improved Player 1 of 10, the same as the evaluation in [award_models.md](award_models.md). 2025-26 was not used to choose any setting:
+
+| Award | Model's top 3 | Real winner |
+|---|---|---|
+| MVP | Nikola Jokić, Shai Gilgeous-Alexander, Luka Dončić | Shai Gilgeous-Alexander (2nd) |
+| Defensive Player of the Year | Victor Wembanyama, Chet Holmgren, Neemias Queta | Victor Wembanyama (1st) |
+| Rookie of the Year | Cooper Flagg, VJ Edgecombe, Kon Knueppel | Cooper Flagg (1st) |
+| Most Improved Player | Jalen Duren, Deni Avdija, Lauri Markkanen | Nickeil Alexander-Walker (not in the top 3) |
+
 ## Streamlit dashboard
 
 An older presentation layer that reads straight from PostgreSQL. The React app replaces it, but it still runs:
