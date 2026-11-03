@@ -175,6 +175,17 @@ CREATE TABLE IF NOT EXISTS simulation_finals (
 
 CREATE INDEX IF NOT EXISTS idx_simulation_finals_batch ON simulation_finals(batch_id);
 
+-- Real postseason outcomes, one row per finished season, from
+-- ingestion/pull_season_results.py. Kept out of games, which holds regular-season
+-- games only, so playoff results never change features, standings, or simulations.
+CREATE TABLE IF NOT EXISTS season_results (
+    season             TEXT PRIMARY KEY,
+    champion_team_id   INTEGER NOT NULL REFERENCES teams(team_id),
+    runner_up_team_id  INTEGER NOT NULL REFERENCES teams(team_id),
+    finals_games       INTEGER NOT NULL CHECK (finals_games BETWEEN 4 AND 7),
+    CHECK (champion_team_id <> runner_up_team_id)
+);
+
 -- Per-player full-season aggregates, sourced from leaguedashplayerstats (one
 -- row per player per season, already combined across teams if traded) rather
 -- than summed from player_game_stats — cheap to backfill many historical
