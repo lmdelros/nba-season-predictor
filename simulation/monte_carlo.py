@@ -27,6 +27,7 @@ from sklearn.preprocessing import StandardScaler
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "models"))
 from train_win_probability import (  # noqa: E402
     FEATURE_COLUMNS,
+    add_shrunk_margins,
     apply_imputer,
     fit_imputer,
     load_training_data,
@@ -105,16 +106,19 @@ def compute_current_standings(played_games):
 SNAPSHOT_COLUMNS = [
     "rolling_win_pct_l10", "rolling_off_rating", "rolling_def_rating",
     "season_win_pct_home", "season_win_pct_away", "season_avg_margin",
+    # Not a result itself, but it says how many games the frozen margin is based on.
+    "games_played_before",
 ]
 
 
 def load_team_features(conn, season):
     """Every team_game_features row for the season (one per team per game) with its
-    game date and team_game_form margin, so a snapshot can be taken as of any cutoff."""
+    game date and team_game_form margin and games played, so a snapshot can be taken as
+    of any cutoff."""
     sql = """
         SELECT tgf.team_id, g.game_date, tgf.rolling_win_pct_l10, tgf.rolling_off_rating,
                tgf.rolling_def_rating, tgf.season_win_pct_home, tgf.season_win_pct_away,
-               tgform.season_avg_margin
+               tgform.season_avg_margin, tgform.games_played_before
         FROM team_game_features tgf
         JOIN games g ON g.game_id = tgf.game_id
         JOIN team_game_form tgform
@@ -156,7 +160,8 @@ def head_to_head_before(played_games):
 def freeze_remaining_features(remaining, snapshot, h2h):
     """Overwrites every results-based feature of not-yet-played games with what was
     known at the cutoff: each team's snapshot form and the pre-cutoff head-to-head.
-    Scheduled rest days and back-to-backs are kept as they are.
+    Games played are frozen too, because the shrunk margin depends on how many games the
+    frozen margin is based on. Scheduled rest days and back-to-backs are kept as they are.
     """
     remaining = remaining.copy()
     for side in ("home", "away"):
@@ -174,7 +179,11 @@ def freeze_remaining_features(remaining, snapshot, h2h):
     )
     pairs = pd.MultiIndex.from_arrays([remaining["home_team_id"], remaining["away_team_id"]])
     remaining["home_h2h_win_pct_season"] = h2h.reindex(pairs).to_numpy()
-    return remaining
+    for side in ("home", "away"):
+        remaining[f"{side}_games_played"] = (
+            snapshot["games_played_before"].reindex(remaining[f"{side}_team_id"]).to_numpy()
+        )
+    return add_shrunk_margins(remaining)
 
 
 def sharpen(probs, sharpness):
@@ -300,6 +309,8 @@ def build_matchup_features(home_id, away_id, snapshot, fills):
         "away_season_win_pct_away": away["season_win_pct_away"],
         "home_season_avg_margin": home["season_avg_margin"],
         "away_season_avg_margin": away["season_avg_margin"],
+        "home_games_played": home["games_played_before"],
+        "away_games_played": away["games_played_before"],
     }
 
 
@@ -319,7 +330,7 @@ def compute_pairwise_win_probs(team_ids, snapshot, model, scaler, fills, sharpne
             rows.append(build_matchup_features(home_id, away_id, snapshot, fills))
             pairs.append((home_id, away_id))
 
-    df = apply_imputer(pd.DataFrame(rows), fills)
+    df = apply_imputer(add_shrunk_margins(pd.DataFrame(rows)), fills)
     X = scaler.transform(df[FEATURE_COLUMNS].astype(float))
     probs = sharpen(model.predict_proba(X)[:, 1], sharpness)
     return dict(zip(pairs, probs))

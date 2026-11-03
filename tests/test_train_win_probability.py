@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.metrics import accuracy_score
 
 from models.train_win_probability import (
+    add_shrunk_margins,
     apply_imputer,
     evaluate,
     fit_imputer,
@@ -42,6 +43,8 @@ def _synthetic_games(n_games=1200, seed=0):
         "away_season_win_pct_away": rng.uniform(0.2, 0.7, n_games),
         "home_season_avg_margin": rng.normal(0, 5, n_games),
         "away_season_avg_margin": rng.normal(0, 5, n_games),
+        "home_games_played": rng.integers(10, 70, n_games),
+        "away_games_played": rng.integers(10, 70, n_games),
     })
 
     # The signal runs through the model's features: season margin and back-to-backs.
@@ -53,6 +56,7 @@ def _synthetic_games(n_games=1200, seed=0):
     )
     win_prob = 1 / (1 + np.exp(-logit))
     df["home_win"] = (rng.uniform(0, 1, n_games) < win_prob).astype(int)
+    df = add_shrunk_margins(df)
     return df
 
 
@@ -72,3 +76,20 @@ def test_win_probability_model_beats_accuracy_threshold():
     assert accuracy >= ACCURACY_THRESHOLD, (
         f"accuracy {accuracy:.3f} fell below {ACCURACY_THRESHOLD}"
     )
+
+
+def test_margins_based_on_few_games_are_shrunk_toward_zero():
+    df = pd.DataFrame({
+        "home_season_avg_margin": [12.0, 12.0, 12.0, None],
+        "away_season_avg_margin": [-6.0, -6.0, -6.0, -6.0],
+        "home_games_played": [5, 20, 50, 0],
+        "away_games_played": [10, 10, 10, 10],
+    })
+
+    shrunk = add_shrunk_margins(df)
+
+    # 12 * n / (n + 10): 5 games keep a third, 50 games keep five sixths.
+    assert shrunk["home_season_avg_margin_shrunk"].tolist()[:3] == [4.0, 8.0, 10.0]
+    assert (shrunk["away_season_avg_margin_shrunk"] == -3.0).all()
+    # No games yet means no margin; the imputer fills it with the league average, 0.
+    assert pd.isna(shrunk["home_season_avg_margin_shrunk"].iloc[3])

@@ -3,8 +3,10 @@ import pandas as pd
 from features.build_features import compute_team_game_features
 from models.train_win_probability import (
     FEATURE_COLUMNS,
+    GAMES_PLAYED_COLUMNS,
     MARGIN_COLUMNS,
     ORIGINAL_FEATURE_COLUMNS,
+    add_shrunk_margins,
 )
 from simulation.monte_carlo import (
     SNAPSHOT_COLUMNS,
@@ -26,6 +28,9 @@ def _season_inputs(games, box):
     features["season_avg_margin"] = margin.groupby(
         [features["season"], features["team_id"]]
     ).transform(lambda s: s.shift(1).expanding().mean())
+    # ...and how many earlier games that average is based on.
+    features["games_played_before"] = features.groupby(["season", "team_id"]).cumcount()
+    features["games_played"] = features["games_played_before"]
     team_features = features[["team_id", "game_date", *SNAPSHOT_COLUMNS]]
 
     sides = {
@@ -34,13 +39,13 @@ def _season_inputs(games, box):
     }
     wide = games.set_index("game_id")
     # Every column load_training_data() returns, not only the ones the model uses.
-    for col in [*ORIGINAL_FEATURE_COLUMNS, *MARGIN_COLUMNS]:
+    for col in [*ORIGINAL_FEATURE_COLUMNS, *MARGIN_COLUMNS, *GAMES_PLAYED_COLUMNS]:
         side, feature = col.split("_", 1)
         wide[col] = sides[side][feature]
     for col in ("home_is_back_to_back", "away_is_back_to_back"):
         wide[col] = wide[col].astype("boolean").astype("Int64")
     wide["home_win"] = (wide["home_score"] > wide["away_score"]).astype(int)
-    return wide.reset_index(), team_features
+    return add_shrunk_margins(wide.reset_index()), team_features
 
 
 def _rescored_season(cutoff_day=30):
@@ -125,7 +130,7 @@ def test_freeze_keeps_scheduled_rest_days():
         "home_is_back_to_back": [0], "away_is_back_to_back": [1],
     })
     snapshot = pd.DataFrame(
-        [[0.6, 115.0, 108.0, 0.7, 0.5, 4.5], [0.4, 110.0, 112.0, 0.5, 0.3, -2.0]],
+        [[0.6, 115.0, 108.0, 0.7, 0.5, 4.5, 40], [0.4, 110.0, 112.0, 0.5, 0.3, -2.0, 10]],
         index=pd.Index([1, 2], name="team_id"), columns=SNAPSHOT_COLUMNS,
     )
     frozen = freeze_remaining_features(remaining, snapshot, head_to_head_before(
@@ -140,4 +145,8 @@ def test_freeze_keeps_scheduled_rest_days():
     assert row["home_season_win_pct_home"] == 0.7
     assert row["away_season_win_pct_away"] == 0.3
     assert (row["home_season_avg_margin"], row["away_season_avg_margin"]) == (4.5, -2.0)
+    # Games played are frozen too, and the shrunk margins use them: 4.5 * 40/50, -2 * 10/20.
+    assert (row["home_games_played"], row["away_games_played"]) == (40, 10)
+    assert row["home_season_avg_margin_shrunk"] == 3.6
+    assert row["away_season_avg_margin_shrunk"] == -1.0
     assert pd.isna(row["home_h2h_win_pct_season"])
