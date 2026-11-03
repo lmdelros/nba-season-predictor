@@ -1,13 +1,14 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import App from "./App"
-import { getFinals, getSeasons, getSimulations, getStandings } from "./api"
+import { getAwards, getFinals, getSeasons, getSimulations, getStandings } from "./api"
 
 vi.mock("./api", () => ({
   getSeasons: vi.fn(),
   getStandings: vi.fn(),
   getSimulations: vi.fn(),
   getFinals: vi.fn(),
+  getAwards: vi.fn(),
 }))
 
 const standings = [
@@ -28,6 +29,18 @@ const finals = [
   },
 ]
 
+const awards = [
+  {
+    award_type: "mvp", award_name: "Most Valuable Player", low_confidence: false,
+    winner: {
+      player_id: 1, full_name: "Test Winner", team_id: 1, team_abbreviation: "BOS",
+      team_name: "Boston Celtics", games_played: 70, points_per_game: 30.0,
+      rebounds_per_game: 8.0, assists_per_game: 6.0, steals_per_game: 1.0, blocks_per_game: 0.5,
+    },
+    picks: [],
+  },
+]
+
 describe("App", () => {
   beforeEach(() => {
     vi.resetAllMocks()
@@ -40,6 +53,9 @@ describe("App", () => {
     getFinals.mockImplementation((season) =>
       Promise.resolve(season === "2025-26" ? finals : []),
     )
+    getAwards.mockImplementation((season) =>
+      Promise.resolve(season === "2025-26" ? awards : []),
+    )
   })
 
   it("loads the newest season's standings and playoff odds", async () => {
@@ -50,6 +66,9 @@ describe("App", () => {
     expect(screen.getByText("99%")).toBeInTheDocument()
     expect(screen.getByText("Most likely NBA Finals")).toBeInTheDocument()
     expect(getStandings).toHaveBeenCalledWith("2025-26")
+    expect(screen.getByRole("heading", { name: "Awards" })).toBeInTheDocument()
+    expect(screen.getByText("Test Winner")).toBeInTheDocument()
+    expect(getAwards).toHaveBeenCalledWith("2025-26")
   })
 
   it("loads the chosen season and explains a missing simulation", async () => {
@@ -64,6 +83,7 @@ describe("App", () => {
     expect(getStandings).toHaveBeenLastCalledWith("2024-25")
     expect(screen.queryByText("99%")).not.toBeInTheDocument()
     expect(screen.queryByText("Most likely NBA Finals")).not.toBeInTheDocument()
+    expect(screen.queryByText("Test Winner")).not.toBeInTheDocument()
   })
 
   it("shows an error when the API cannot be reached", async () => {
