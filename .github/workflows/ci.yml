@@ -112,7 +112,7 @@ jobs:
           views=$(docker compose exec -T postgres psql -U nba -d nba_predictor -tAc \
             "SELECT count(*) FROM information_schema.views WHERE table_schema = 'public'")
           echo "tables=$tables views=$views"
-          test "$tables" -eq 15 && test "$views" -eq 1
+          test "$tables" -eq 15 && test "$views" -eq 2
 
       # Requests go browser-style through nginx on port 8080, so this checks the whole
       # chain: nginx serves the app and forwards /api to FastAPI, which queries Postgres.
