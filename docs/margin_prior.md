@@ -10,7 +10,7 @@ For reference, giving every team the same 16-in-30 playoff chance scores a playo
 
 | Candidate | Win-total error (wins) | Playoff Brier | Game log loss |
 |---|---|---|---|
-| A: current model (shrink toward 0) | 8.22 | 0.2749 | 0.6583 |
+| A: shrink toward 0 (model before this experiment) | 8.22 | 0.2749 | 0.6583 |
 | B: toward 50% of last season's margin | 7.52 | 0.2417 | 0.6485 |
 | C: toward 75% of last season's margin **(chosen)** | 7.38 | 0.2396 | 0.6489 |
 | D: toward 100% of last season's margin | 7.34 | 0.2415 | 0.6515 |
@@ -19,7 +19,7 @@ For reference, giving every team the same 16-in-30 playoff chance scores a playo
 
 | Candidate | Win-total error (wins) | Playoff Brier | Game log loss |
 |---|---|---|---|
-| A: current model (shrink toward 0) | 3.19 | 0.0904 | 0.6275 |
+| A: shrink toward 0 (model before this experiment) | 3.19 | 0.0904 | 0.6275 |
 | B: toward 50% of last season's margin | 3.17 | 0.0895 | 0.6267 |
 | C: toward 75% of last season's margin **(chosen)** | 3.18 | 0.0892 | 0.6265 |
 | D: toward 100% of last season's margin | 3.19 | 0.0893 | 0.6264 |
@@ -28,7 +28,7 @@ For reference, giving every team the same 16-in-30 playoff chance scores a playo
 
 | Candidate | Win-total error (wins) | Playoff Brier | Game log loss |
 |---|---|---|---|
-| A: current model (shrink toward 0) | 7.81 | 0.2088 | 0.6322 |
+| A: shrink toward 0 (model before this experiment) | 7.81 | 0.2088 | 0.6322 |
 | B: toward 50% of last season's margin | 7.08 | 0.2267 | 0.6273 |
 | C: toward 75% of last season's margin **(chosen)** | 7.19 | 0.2429 | 0.6312 |
 | D: toward 100% of last season's margin | 7.61 | 0.2587 | 0.6371 |
@@ -37,7 +37,7 @@ For reference, giving every team the same 16-in-30 playoff chance scores a playo
 
 | Candidate | Win-total error (wins) | Playoff Brier | Game log loss |
 |---|---|---|---|
-| A: current model (shrink toward 0) | 3.62 | 0.1073 | 0.5654 |
+| A: shrink toward 0 (model before this experiment) | 3.62 | 0.1073 | 0.5654 |
 | B: toward 50% of last season's margin | 3.65 | 0.1070 | 0.5669 |
 | C: toward 75% of last season's margin **(chosen)** | 3.69 | 0.1063 | 0.5691 |
 | D: toward 100% of last season's margin | 3.76 | 0.1059 | 0.5716 |

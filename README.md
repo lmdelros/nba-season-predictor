@@ -10,9 +10,10 @@ Predicts NBA game winners and simulates the rest of a season to project standing
 
 ## Highlights
 
-- **68.5% of games predicted correctly on a season the model never saw** (all 1,230 games of 2025-26), 13.1 points better than always picking the home team, with lower log loss and Brier score than every baseline. [Results](docs/results.md)
+- **68.0% of games predicted correctly on a season the model never saw** (all 1,230 games of 2025-26), 12.6 points better than always picking the home team, with lower log loss and Brier score than every baseline. [Results](docs/results.md)
 - **Found and fixed data leakage in the season simulator.** The original backtest scored future games with features built from their real results, which inflated its accuracy (0.976 rank correlation). After freezing every feature at the cutoff date it measured an honest 0.921. [Backtest](docs/backtest.md)
 - **Found and fixed an overcautious model, measured against real champions.** Projections were too cautious in every season (calibration slope 1.47, where 1.0 is calibrated): noisy early-season margins taught the model to under-trust margins. Shrinking each margin by how few games it is based on brought the slope to 1.11, cut the backtest's win-total error from 4.02 to 3.63, and lowered log loss on the real champion from 1.80 to 1.64. [Title odds](docs/title_odds.md)
+- **Made early-season projections use last season.** About seven games into a season the model knew only those games. Starting each team from 75% of last season's margin, chosen on 2022-23 to 2024-25, cut the error of early-November win-total projections from 8.22 to 7.38 wins on those seasons and from 7.81 to 7.19 on 2025-26, without hurting February projections. [Margin prior](docs/margin_prior.md)
 - **Leakage is guarded by tests.** Every feature, the simulator, and a SQL window-function view are tested by rewriting future results and asserting nothing earlier changes; each test was checked by injecting the bug on purpose.
 - **Deployed on AWS (EC2 and RDS).** The Docker stack runs on an EC2 server in front of a private, encrypted RDS PostgreSQL database that only that server can reach, over connections that require TLS. [Deployment](docs/deployment.md)
 - **Runs with one command.** Docker Compose starts PostgreSQL, a FastAPI service, and a React app served by nginx; a second command loads real data.
@@ -22,7 +23,7 @@ Predicts NBA game winners and simulates the rest of a season to project standing
 
 The project pulls game results and box scores from NBA.com, stores them in PostgreSQL, and turns them into per-team features such as season-to-date point margin and rest days. A logistic regression model estimates each game's home-win probability. A Monte Carlo simulation then plays out the rest of the season 10,000 times, seeds a best-of-seven playoff bracket from each simulated season, and counts how often each team makes the playoffs and wins the title. The results are served by a REST API and shown in a React web app.
 
-Every reported number comes from a script in this repository that anyone can rerun, and the win model and the simulation are both compared with simple baselines, so a claim like "+13.1 points" has a reference point. Projections are evaluated as backtests on completed seasons: the simulation pretends it is February 1, 2026, and its projections are compared with how the 2025-26 season actually ended.
+Every reported number comes from a script in this repository that anyone can rerun, and the win model and the simulation are both compared with simple baselines, so a claim like "+12.6 points" has a reference point. Projections are evaluated as backtests on completed seasons: the simulation pretends it is February 1, 2026, and its projections are compared with how the 2025-26 season actually ended.
 
 ```mermaid
 flowchart LR
@@ -131,19 +132,19 @@ All numbers below are produced by scripts in `evaluation/` and `models/`; each l
 |---|---|---|---|
 | Always pick the home team | 55.4% | 0.687 | 0.247 |
 | Pick the team with the better record so far | 66.9% | 0.631 | 0.220 |
-| Gradient boosting, same features | 67.4% | 0.631 | 0.217 |
-| **Logistic regression (this project)** | **68.5%** | **0.599** | **0.206** |
+| Gradient boosting, same features | 64.1% | 0.640 | 0.221 |
+| **Logistic regression (this project)** | **68.0%** | **0.599** | **0.205** |
 
-Log loss and Brier score measure how good the predicted probabilities are; lower is better for both. The model's six features (season-to-date point margin, rest days, and back-to-backs for each team) were chosen by validating on earlier seasons only ([docs/feature_selection.md](docs/feature_selection.md)). Each margin is shrunk toward zero by how few games it is based on, so noisy early-season margins do not teach the model to under-trust the reliable ones later in the season ([docs/margin_treatment.md](docs/margin_treatment.md)).
+Log loss and Brier score measure how good the predicted probabilities are; lower is better for both. The model's six features (season-to-date point margin, rest days, and back-to-backs for each team) were chosen by validating on earlier seasons only ([docs/feature_selection.md](docs/feature_selection.md)). Each margin is pulled toward 75% of the team's margin last season, more strongly the fewer games it is based on, so noisy early-season margins do not teach the model to under-trust the reliable ones later in the season ([docs/margin_treatment.md](docs/margin_treatment.md)), and a team starts the season near how good it was last year ([docs/margin_prior.md](docs/margin_prior.md)).
 
 **Season simulation:** projecting 2025-26 from February 1, 2026. ([docs/backtest.md](docs/backtest.md))
 
 | Method | Rank correlation with final standings | Mean error (wins) |
 |---|---|---|
 | Keep each team's February 1 win % for all 82 games | 0.943 | 3.54 |
-| **Monte Carlo simulation (this project)** | **0.943** | **3.63** |
+| **Monte Carlo simulation (this project)** | **0.943** | **3.69** |
 
-The simulation matches the naive projection's ordering and comes within 0.1 wins of its accuracy while also producing playoff and title odds; it found 14 of the 16 playoff teams. Scored against the real champions of 2021-22 to 2025-26, the February 1 favorite won 3 of 5 titles, and the model's log loss on the champion is 1.64, against 3.40 for giving every team equal odds. ([docs/title_odds.md](docs/title_odds.md))
+The simulation matches the naive projection's ordering and comes within 0.2 wins of its accuracy while also producing playoff and title odds; it found 14 of the 16 playoff teams. Scored against the real champions of 2021-22 to 2025-26, the February 1 favorite won 3 of 5 titles, and the model's log loss on the champion is 1.64, against 3.40 for giving every team equal odds. ([docs/title_odds.md](docs/title_odds.md))
 
 **Point-margin model:** a linear regression on the original 13 features predicts the final margin within 12.11 points on average, against 14.32 for always predicting the average margin (2024-25, last 20% of the season, 262 games).
 
@@ -174,7 +175,8 @@ npm run build
 
 ## Limitations
 
-- **Projections are still slightly cautious, most in lopsided seasons.** Across five seasons the calibration slope is 1.11 (1.0 is calibrated), but 1.41 in 2025-26, when one team won 64 games. Championships also depend on things the data does not contain, such as injuries, trades, and playoff rotations, so long shots like the 2026 Knicks get little probability.
+- **Projections are still slightly cautious, most in lopsided seasons.** Across five seasons the calibration slope is 1.10 (1.0 is calibrated), but 1.37 in 2025-26, when one team won 64 games. Championships also depend on things the data does not contain, such as injuries, trades, and playoff rotations, so long shots like the 2026 Knicks get little probability.
+- **Early-season playoff odds are overconfident.** In early November the simulation treats each team's strength as known, so its playoff odds score about as well as giving every team the same chance (Brier 0.24 against 0.249 on 2022-23 to 2024-25). Win totals are more reliable: projecting 2025-26 from November 4, 2025 missed by 7.19 wins on average, against 10.49 for keeping each team's current win % (`python -m evaluation.backtest_simulation --season 2025-26 --cutoff-date 2025-11-04`).
 - **Backtests only.** Every projection is evaluated on a completed season with a pretend cutoff date; no season was in progress while this was built.
 - **The oldest season has the least to learn from.** Each projection trains on earlier seasons plus that season's games before the cutoff, so 2021-22, the first season in the data, is projected from its own games only.
 - **The play-in tournament is not modeled.** The top eight teams in each conference by wins make the playoffs.
