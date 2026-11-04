@@ -104,6 +104,16 @@ Pretends it is `--cutoff-date`, counts real results before it, and simulates eve
 python -m simulation.monte_carlo --season 2025-26 --cutoff-date 2026-02-01
 ```
 
+### A season in progress
+
+The game log only contains played games, so a season in progress also needs its remaining schedule. One command downloads the played games and box scores, loads the unplayed regular-season games as `scheduled`, rebuilds features, and simulates the rest of the season from the day after the latest final game:
+
+```bash
+python -m scripts.refresh_season --season 2026-27
+```
+
+If a game before that day still has no result (postponed, or not yet in NBA.com's game log), the command stops and names the game instead of simulating with a missing result. NBA Cup knockout games are added once their teams are known, so re-running the command later in the season picks them up.
+
 ## Evaluations
 
 These reproduce the files in `docs/`. They only read from the database. Each needs the five seasons above loaded.
