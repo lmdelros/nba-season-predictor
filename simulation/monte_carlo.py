@@ -108,6 +108,8 @@ SNAPSHOT_COLUMNS = [
     "season_win_pct_home", "season_win_pct_away", "season_avg_margin",
     # Not a result itself, but it says how many games the frozen margin is based on.
     "games_played_before",
+    # Last season's margin, fixed for the whole season; matchups need it with the rest.
+    "prior_season_margin",
 ]
 
 
@@ -118,7 +120,8 @@ def load_team_features(conn, season):
     sql = """
         SELECT tgf.team_id, g.game_date, tgf.rolling_win_pct_l10, tgf.rolling_off_rating,
                tgf.rolling_def_rating, tgf.season_win_pct_home, tgf.season_win_pct_away,
-               tgform.season_avg_margin, tgform.games_played_before
+               tgform.season_avg_margin, tgform.games_played_before,
+               tgform.prior_season_margin
         FROM team_game_features tgf
         JOIN games g ON g.game_id = tgf.game_id
         JOIN team_game_form tgform
@@ -160,15 +163,15 @@ def head_to_head_before(played_games):
 def freeze_remaining_features(remaining, snapshot, h2h):
     """Overwrites every results-based feature of not-yet-played games with what was
     known at the cutoff: each team's snapshot form and the pre-cutoff head-to-head.
-    Games played are frozen too, because the shrunk margin depends on how many games the
-    frozen margin is based on. Scheduled rest days and back-to-backs are kept as they are.
+    Games played and last season's margin come from the snapshot too, because the shrunk
+    margin is built from them. Scheduled rest days and back-to-backs are kept as they are.
     """
     remaining = remaining.copy()
     for side in ("home", "away"):
         form = snapshot.reindex(remaining[f"{side}_team_id"])
         for col in (
             "rolling_win_pct_l10", "rolling_off_rating", "rolling_def_rating",
-            "season_avg_margin",
+            "season_avg_margin", "prior_season_margin",
         ):
             remaining[f"{side}_{col}"] = form[col].to_numpy()
     remaining["home_season_win_pct_home"] = (
@@ -311,6 +314,8 @@ def build_matchup_features(home_id, away_id, snapshot, fills):
         "away_season_avg_margin": away["season_avg_margin"],
         "home_games_played": home["games_played_before"],
         "away_games_played": away["games_played_before"],
+        "home_prior_season_margin": home["prior_season_margin"],
+        "away_prior_season_margin": away["prior_season_margin"],
     }
 
 

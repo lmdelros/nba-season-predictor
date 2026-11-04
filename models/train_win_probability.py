@@ -32,10 +32,16 @@ B2B_COLUMNS = ["home_is_back_to_back", "away_is_back_to_back"]
 MARGIN_COLUMNS = ["home_season_avg_margin", "away_season_avg_margin"]
 GAMES_PLAYED_COLUMNS = ["home_games_played", "away_games_played"]
 SHRUNK_MARGIN_COLUMNS = ["home_season_avg_margin_shrunk", "away_season_avg_margin_shrunk"]
-# A margin from n games is scaled by n / (n + 10): early-season margins, mostly noise, move
-# toward 0 (the league average), so the model learns to trust margins built on many games.
-# Chosen by evaluation/select_margin_treatment.py (see docs/margin_treatment.md).
+PRIOR_MARGIN_COLUMNS = ["home_prior_season_margin", "away_prior_season_margin"]
+# A margin from n games counts as n games, and a prior as MARGIN_SHRINK_GAMES more:
+# early-season margins, mostly noise, move toward the prior, so the model learns to trust
+# margins built on many games. Chosen by evaluation/select_margin_treatment.py (see
+# docs/margin_treatment.md).
 MARGIN_SHRINK_GAMES = 10
+# The prior is this share of the team's margin in the previous season, so a team starts
+# the season near how good it was last year. Chosen by evaluation/select_margin_prior.py
+# (see docs/margin_prior.md).
+MARGIN_PRIOR_WEIGHT = 0.75
 
 # Chosen by evaluation/select_features.py using only the 2021-22 to 2024-25 seasons
 # (see docs/feature_selection.md): season-to-date point margin plus the schedule, with
@@ -73,7 +79,9 @@ def load_training_data(conn, season):
                hm.season_avg_margin AS home_season_avg_margin,
                am.season_avg_margin AS away_season_avg_margin,
                hm.games_played_before AS home_games_played,
-               am.games_played_before AS away_games_played
+               am.games_played_before AS away_games_played,
+               hm.prior_season_margin AS home_prior_season_margin,
+               am.prior_season_margin AS away_prior_season_margin
         FROM games g
         JOIN team_game_features hf ON hf.game_id = g.game_id AND hf.team_id = g.home_team_id
         JOIN team_game_features af ON af.game_id = g.game_id AND af.team_id = g.away_team_id
@@ -91,14 +99,19 @@ def load_training_data(conn, season):
 
 
 def add_shrunk_margins(df):
-    """Adds each side's season margin scaled by games / (games + MARGIN_SHRINK_GAMES). A
-    team with no games yet has no margin, so its shrunk margin stays empty and the
-    imputer fills it with 0."""
+    """Adds each side's season margin pulled toward its prior,
+    (n * margin + k * prior) / (n + k) with k = MARGIN_SHRINK_GAMES and prior =
+    MARGIN_PRIOR_WEIGHT times last season's margin. A team without a previous season in
+    the data has prior 0, the league average; before its first game, the value is the
+    prior alone."""
     df = df.copy()
-    for margin, games, shrunk in zip(MARGIN_COLUMNS, GAMES_PLAYED_COLUMNS,
-                                     SHRUNK_MARGIN_COLUMNS):
-        n = df[games].astype(float)
-        df[shrunk] = df[margin].astype(float) * n / (n + MARGIN_SHRINK_GAMES)
+    k = MARGIN_SHRINK_GAMES
+    for margin, games, prior, shrunk in zip(MARGIN_COLUMNS, GAMES_PLAYED_COLUMNS,
+                                            PRIOR_MARGIN_COLUMNS, SHRUNK_MARGIN_COLUMNS):
+        n = df[games].astype(float).fillna(0)
+        observed = df[margin].astype(float).fillna(0)
+        start = MARGIN_PRIOR_WEIGHT * df[prior].astype(float).fillna(0)
+        df[shrunk] = (n * observed + k * start) / (n + k)
     return df
 
 
@@ -164,7 +177,7 @@ def evaluate(model, scaler, test_df):
     return probs
 
 
-def save_predictions(conn, test_df, probs, model_version="logreg_v3"):
+def save_predictions(conn, test_df, probs, model_version="logreg_v4"):
     sql = """
         INSERT INTO game_predictions (game_id, model_version, model_type, predicted_home_win_prob)
         VALUES (%(game_id)s, %(model_version)s, 'win_probability', %(prob)s)

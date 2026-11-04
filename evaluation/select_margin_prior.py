@@ -40,12 +40,12 @@ VALIDATION_SEASONS = ["2022-23", "2023-24", "2024-25"]
 TEST_SEASON = "2025-26"
 # Candidate: the share of last season's margin a team starts from (0 is the current model).
 CANDIDATES = {
-    "A: current model (shrink toward 0)": 0.0,
+    "A: shrink toward 0 (model before this experiment)": 0.0,
     "B: toward 50% of last season's margin": 0.5,
     "C: toward 75% of last season's margin": 0.75,
     "D: toward 100% of last season's margin": 1.0,
 }
-CURRENT = "A: current model (shrink toward 0)"
+CURRENT = "A: shrink toward 0 (model before this experiment)"
 # Win-total errors closer than this count as a tie: the current model is kept if it is in
 # the tie, otherwise the lowest playoff Brier score wins. The winner must also not raise
 # the February 1 validation error by more than this.
