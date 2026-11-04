@@ -64,4 +64,20 @@ describe("PlayoffOdds", () => {
 
     expect(screen.getByText(/10,000 runs/)).toBeInTheDocument()
   })
+
+  it("warns that early-season projections are uncertain", () => {
+    render(<PlayoffOdds simulations={simulations} gamesPlayed={7.4} />)
+
+    expect(
+      screen.getByText(/Early season: teams have played about 7 games each/),
+    ).toBeInTheDocument()
+  })
+
+  it("leaves out the warning later in the season or when games played is unknown", () => {
+    const { rerender } = render(<PlayoffOdds simulations={simulations} gamesPlayed={20} />)
+    expect(screen.queryByText(/Early season/)).not.toBeInTheDocument()
+
+    rerender(<PlayoffOdds simulations={simulations} />)
+    expect(screen.queryByText(/Early season/)).not.toBeInTheDocument()
+  })
 })

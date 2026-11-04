@@ -12,7 +12,10 @@ vi.mock("./api", () => ({
 }))
 
 const standings = [
-  { team_id: 1, full_name: "Boston Celtics", conference: "East", wins: 60, losses: 22, win_pct: 0.732 },
+  {
+    team_id: 1, full_name: "Boston Celtics", conference: "East", games_played: 82,
+    wins: 60, losses: 22, win_pct: 0.732,
+  },
 ]
 const simulations = [
   {
@@ -84,6 +87,18 @@ describe("App", () => {
     expect(screen.queryByText("99%")).not.toBeInTheDocument()
     expect(screen.queryByText("Most likely NBA Finals")).not.toBeInTheDocument()
     expect(screen.queryByText("Test Winner")).not.toBeInTheDocument()
+  })
+
+  it("warns about early-season projections from the standings' games played", async () => {
+    getStandings.mockResolvedValue([
+      { ...standings[0], games_played: 6, wins: 5, losses: 1 },
+      { ...standings[0], team_id: 2, full_name: "Utah Jazz", games_played: 8, wins: 1, losses: 7 },
+    ])
+    render(<App />)
+
+    expect(
+      await screen.findByText(/Early season: teams have played about 7 games each/),
+    ).toBeInTheDocument()
   })
 
   it("shows an error when the API cannot be reached", async () => {
