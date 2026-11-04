@@ -1,7 +1,13 @@
 import { formatDate } from "../format"
 import TeamLogo from "./TeamLogo"
 
-export default function PlayoffOdds({ simulations }) {
+// Below this many games per team, the page warns that the odds are uncertain. Playoff
+// odds were measured as overconfident about 7 games into a season and reliable by
+// February 1, about 50 games in (docs/margin_prior.md); 20 is a round number between.
+const EARLY_SEASON_GAMES = 20
+
+// gamesPlayed: average games played per team so far, if known.
+export default function PlayoffOdds({ simulations, gamesPlayed }) {
   // The API returns an empty list for seasons that no Monte Carlo run has covered.
   if (simulations.length === 0) {
     return (
@@ -24,6 +30,13 @@ export default function PlayoffOdds({ simulations }) {
         Monte Carlo simulation, {simulations[0]?.num_simulations?.toLocaleString()} runs
         (playoff odds + full bracket simulation for championship odds)
       </p>
+      {gamesPlayed != null && gamesPlayed < EARLY_SEASON_GAMES && (
+        <p className="early-season-note">
+          Early season: teams have played about {Math.round(gamesPlayed)} games each, so
+          these projections are uncertain, and playoff odds near 0% or 100% are
+          overconfident.
+        </p>
+      )}
       <ul className="playoff-odds-list">
         {simulations.map((team) => (
           <li key={team.team_id} className="playoff-odds-row">

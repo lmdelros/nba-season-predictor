@@ -49,6 +49,11 @@ export default function App() {
       .catch((err) => setError(err.message))
   }, [season])
 
+  // Average games played per team, for the early-season note on the playoff odds.
+  const gamesPlayed = standings?.length
+    ? standings.reduce((sum, team) => sum + team.games_played, 0) / standings.length
+    : null
+
   return (
     <div className="app">
       <header className="app-header">
@@ -66,7 +71,7 @@ export default function App() {
 
       {finals && <FinalsHeadline matchups={finals} />}
       {standings && <StandingsTable standings={standings} />}
-      {simulations && <PlayoffOdds simulations={simulations} />}
+      {simulations && <PlayoffOdds simulations={simulations} gamesPlayed={gamesPlayed} />}
       {awards && <AwardsSection awards={awards} />}
     </div>
   )
