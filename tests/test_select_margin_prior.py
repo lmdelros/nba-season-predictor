@@ -2,7 +2,11 @@ import pandas as pd
 import pytest
 
 from evaluation.select_margin_prior import previous_season, with_prior
-from models.train_win_probability import SHRUNK_MARGIN_COLUMNS, add_shrunk_margins
+from models.train_win_probability import (
+    MARGIN_PRIOR_WEIGHT,
+    SHRUNK_MARGIN_COLUMNS,
+    add_shrunk_margins,
+)
 
 
 def _games():
@@ -23,11 +27,18 @@ def test_previous_season():
     assert previous_season("2000-01") == "1999-00"
 
 
-def test_weight_zero_is_the_current_shrinkage_toward_zero():
-    games = _games().iloc[:1]
+def test_the_chosen_weight_matches_the_production_shrinkage():
+    games = _games()
+    # Production reads last season's margin from the team_game_form view.
+    with_columns = games.assign(**{
+        f"{side}_prior_season_margin": [
+            MARGINS.get(("2022-23", team)) for team in games[f"{side}_team_id"]
+        ]
+        for side in ("home", "away")
+    })
 
-    expected = add_shrunk_margins(games)[SHRUNK_MARGIN_COLUMNS]
-    actual = with_prior(games, 0.0, MARGINS)[SHRUNK_MARGIN_COLUMNS]
+    expected = add_shrunk_margins(with_columns)[SHRUNK_MARGIN_COLUMNS]
+    actual = with_prior(games, MARGIN_PRIOR_WEIGHT, MARGINS)[SHRUNK_MARGIN_COLUMNS]
 
     pd.testing.assert_frame_equal(actual, expected)
 

@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from features.build_features import compute_team_game_features
 from models.train_win_probability import (
@@ -6,10 +7,12 @@ from models.train_win_probability import (
     GAMES_PLAYED_COLUMNS,
     MARGIN_COLUMNS,
     ORIGINAL_FEATURE_COLUMNS,
+    PRIOR_MARGIN_COLUMNS,
     add_shrunk_margins,
 )
 from simulation.monte_carlo import (
     SNAPSHOT_COLUMNS,
+    build_matchup_features,
     cutoff_snapshot,
     freeze_remaining_features,
     head_to_head_before,
@@ -31,6 +34,12 @@ def _season_inputs(games, box):
     # ...and how many earlier games that average is based on.
     features["games_played_before"] = features.groupby(["season", "team_id"]).cumcount()
     features["games_played"] = features["games_played_before"]
+    # ...and the team's average margin in the previous season, if that season is here.
+    season_margin = margin.groupby([features["season"], features["team_id"]]).mean()
+    previous = features["season"].map(lambda s: f"{int(s[:4]) - 1}-{s[2:4]}")
+    features["prior_season_margin"] = [
+        season_margin.get((p, t)) for p, t in zip(previous, features["team_id"])
+    ]
     team_features = features[["team_id", "game_date", *SNAPSHOT_COLUMNS]]
 
     sides = {
@@ -39,7 +48,8 @@ def _season_inputs(games, box):
     }
     wide = games.set_index("game_id")
     # Every column load_training_data() returns, not only the ones the model uses.
-    for col in [*ORIGINAL_FEATURE_COLUMNS, *MARGIN_COLUMNS, *GAMES_PLAYED_COLUMNS]:
+    for col in [*ORIGINAL_FEATURE_COLUMNS, *MARGIN_COLUMNS, *GAMES_PLAYED_COLUMNS,
+                *PRIOR_MARGIN_COLUMNS]:
         side, feature = col.split("_", 1)
         wide[col] = sides[side][feature]
     for col in ("home_is_back_to_back", "away_is_back_to_back"):
@@ -123,17 +133,23 @@ def test_head_to_head_counts_only_played_games_from_both_sides():
     assert (2, 3) not in h2h.index
 
 
+def _snapshot():
+    """Two teams' cutoff form: team 1 is +4.5 over 40 games and was +3 last season, team 2
+    is -2 over 10 games and was -1 last season."""
+    return pd.DataFrame(
+        [[0.6, 115.0, 108.0, 0.7, 0.5, 4.5, 40, 3.0],
+         [0.4, 110.0, 112.0, 0.5, 0.3, -2.0, 10, -1.0]],
+        index=pd.Index([1, 2], name="team_id"), columns=SNAPSHOT_COLUMNS,
+    )
+
+
 def test_freeze_keeps_scheduled_rest_days():
     remaining = pd.DataFrame({
         "home_team_id": [1], "away_team_id": [2],
         "home_rest_days": [3], "away_rest_days": [1],
         "home_is_back_to_back": [0], "away_is_back_to_back": [1],
     })
-    snapshot = pd.DataFrame(
-        [[0.6, 115.0, 108.0, 0.7, 0.5, 4.5, 40], [0.4, 110.0, 112.0, 0.5, 0.3, -2.0, 10]],
-        index=pd.Index([1, 2], name="team_id"), columns=SNAPSHOT_COLUMNS,
-    )
-    frozen = freeze_remaining_features(remaining, snapshot, head_to_head_before(
+    frozen = freeze_remaining_features(remaining, _snapshot(), head_to_head_before(
         pd.DataFrame(columns=["home_team_id", "away_team_id", "home_score", "away_score"])
     ))
 
@@ -145,8 +161,20 @@ def test_freeze_keeps_scheduled_rest_days():
     assert row["home_season_win_pct_home"] == 0.7
     assert row["away_season_win_pct_away"] == 0.3
     assert (row["home_season_avg_margin"], row["away_season_avg_margin"]) == (4.5, -2.0)
-    # Games played are frozen too, and the shrunk margins use them: 4.5 * 40/50, -2 * 10/20.
+    # Games played and last season's margin are frozen too, and the shrunk margins use
+    # them: (40 * 4.5 + 10 * 0.75 * 3) / 50 and (10 * -2 + 10 * 0.75 * -1) / 20.
     assert (row["home_games_played"], row["away_games_played"]) == (40, 10)
-    assert row["home_season_avg_margin_shrunk"] == 3.6
-    assert row["away_season_avg_margin_shrunk"] == -1.0
+    assert (row["home_prior_season_margin"], row["away_prior_season_margin"]) == (3.0, -1.0)
+    assert row["home_season_avg_margin_shrunk"] == pytest.approx(4.05)
+    assert row["away_season_avg_margin_shrunk"] == pytest.approx(-1.375)
     assert pd.isna(row["home_h2h_win_pct_season"])
+
+
+def test_playoff_matchups_use_the_same_shrunk_margins():
+    row = build_matchup_features(1, 2, _snapshot(), {"home_rest_days": 1, "away_rest_days": 1})
+
+    shrunk = add_shrunk_margins(pd.DataFrame([row])).iloc[0]
+
+    # Same values as a regular-season game between them after the cutoff.
+    assert shrunk["home_season_avg_margin_shrunk"] == pytest.approx(4.05)
+    assert shrunk["away_season_avg_margin_shrunk"] == pytest.approx(-1.375)

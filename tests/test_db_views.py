@@ -105,3 +105,25 @@ def test_margin_resets_each_season(db):
 
     assert margins[(990302, 9001)] is None
     assert margins[(990303, 9001)] == 5.0
+
+
+def test_prior_season_margin_is_last_seasons_average(db):
+    insert_games(db, [
+        (990501, "2098-99", date(2099, 3, 1), 9001, 9002, 120, 100),       # 9001: +20
+        (990502, "2098-99", date(2099, 3, 3), 9002, 9001, 104, 100),       # 9001: -4
+        (990503, "2098-99", date(2099, 3, 5), 9001, 9002, None, None),     # not played
+        (990504, SEASON, date(2099, 10, 20), 9001, 9003, 100, 95),
+        (990505, SEASON, date(2099, 10, 22), 9001, 9003, 80, 120),
+    ])
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT game_id, team_id, prior_season_margin FROM team_game_form "
+            "WHERE game_id BETWEEN 990504 AND 990505"
+        )
+        prior = {(g, t): m for g, t, m in cur.fetchall()}
+
+    # 9001 averaged (+20 - 4) / 2 last season, and that stays fixed all season, whatever
+    # happens this season; the unplayed game does not count.
+    assert prior[(990504, 9001)] == prior[(990505, 9001)] == 8.0
+    # 9003 has no games in the previous season.
+    assert prior[(990504, 9003)] is None

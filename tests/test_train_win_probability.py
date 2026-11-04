@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 from sklearn.metrics import accuracy_score
 
 from models.train_win_probability import (
@@ -45,6 +46,8 @@ def _synthetic_games(n_games=1200, seed=0):
         "away_season_avg_margin": rng.normal(0, 5, n_games),
         "home_games_played": rng.integers(10, 70, n_games),
         "away_games_played": rng.integers(10, 70, n_games),
+        "home_prior_season_margin": rng.normal(0, 4, n_games),
+        "away_prior_season_margin": rng.normal(0, 4, n_games),
     })
 
     # The signal runs through the model's features: season margin and back-to-backs.
@@ -78,18 +81,23 @@ def test_win_probability_model_beats_accuracy_threshold():
     )
 
 
-def test_margins_based_on_few_games_are_shrunk_toward_zero():
+def test_margins_based_on_few_games_are_pulled_toward_last_season():
     df = pd.DataFrame({
         "home_season_avg_margin": [12.0, 12.0, 12.0, None],
         "away_season_avg_margin": [-6.0, -6.0, -6.0, -6.0],
         "home_games_played": [5, 20, 50, 0],
         "away_games_played": [10, 10, 10, 10],
+        # Home team was +8 last season (prior 0.75 * 8 = 6); away has no previous season.
+        "home_prior_season_margin": [8.0, 8.0, 8.0, 8.0],
+        "away_prior_season_margin": [None, None, None, None],
     })
 
     shrunk = add_shrunk_margins(df)
 
-    # 12 * n / (n + 10): 5 games keep a third, 50 games keep five sixths.
-    assert shrunk["home_season_avg_margin_shrunk"].tolist()[:3] == [4.0, 8.0, 10.0]
+    # (n * 12 + 10 * 6) / (n + 10): few games stay near 6, many games approach 12.
+    assert shrunk["home_season_avg_margin_shrunk"].tolist()[:3] == pytest.approx(
+        [120 / 15, 300 / 30, 660 / 60])
+    # No previous season means prior 0, the league average: -6 * 10 / 20.
     assert (shrunk["away_season_avg_margin_shrunk"] == -3.0).all()
-    # No games yet means no margin; the imputer fills it with the league average, 0.
-    assert pd.isna(shrunk["home_season_avg_margin_shrunk"].iloc[3])
+    # Before the first game, the value is the prior alone.
+    assert shrunk["home_season_avg_margin_shrunk"].iloc[3] == pytest.approx(6.0)
