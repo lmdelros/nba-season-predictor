@@ -94,7 +94,7 @@ No environment file is needed: the Compose file sets every setting, and the data
 
 ## Usage
 
-The web app shows the final standings for each loaded season and, for seasons with a simulation run, the most likely NBA Finals matchup and each team's playoff and championship odds. Each projection is labeled with the date it was made from; the live demo projects every season from February 1 of that season.
+The web app shows the standings for each loaded season and, for seasons with a simulation run, the most likely NBA Finals matchup and each team's playoff and championship odds. Each projection is labeled with the date it was made from: the live demo projects each completed season from February 1 of that season, and the 2026-27 season in progress from the day after its latest game, updated with `python -m scripts.refresh_season` ([how](docs/deployment.md#updating-the-season-in-progress)). Early in a season, the page notes that the projections rest on only a few games.
 
 The API is available directly on port 8000, with interactive documentation at **http://localhost:8000/docs**, and through the web app under `/api`:
 
@@ -177,7 +177,8 @@ npm run build
 
 - **Projections are still slightly cautious, most in lopsided seasons.** Across five seasons the calibration slope is 1.10 (1.0 is calibrated), but 1.37 in 2025-26, when one team won 64 games. Championships also depend on things the data does not contain, such as injuries, trades, and playoff rotations, so long shots like the 2026 Knicks get little probability.
 - **Early-season playoff odds are overconfident.** In early November the simulation treats each team's strength as known, so its playoff odds score about as well as giving every team the same chance (Brier 0.24 against 0.249 on 2022-23 to 2024-25). Win totals are more reliable: projecting 2025-26 from November 4, 2025 missed by 7.19 wins on average, against 10.49 for keeping each team's current win % (`python -m evaluation.backtest_simulation --season 2025-26 --cutoff-date 2025-11-04`).
-- **Backtests only.** Every projection is evaluated on a completed season with a pretend cutoff date; no season was in progress while this was built.
+- **Evaluated on completed seasons.** Every reported number comes from a completed season with a pretend cutoff date. The 2026-27 projections can only be scored once that season ends.
+- **Updates are manual.** NBA.com does not answer cloud servers, so the live season is refreshed from a local machine through an SSH tunnel rather than on a schedule.
 - **The oldest season has the least to learn from.** Each projection trains on earlier seasons plus that season's games before the cutoff, so 2021-22, the first season in the data, is projected from its own games only.
 - **The play-in tournament is not modeled.** The top eight teams in each conference by wins make the playoffs.
 - **The data download depends on NBA.com,** which can be slow and is reported to block requests from cloud servers.

@@ -79,7 +79,7 @@ The `migrate` service creates the tables and views in RDS before the API starts.
 
 ### Loading data
 
-NBA.com is reported to block requests from cloud servers, so data is loaded on a local machine and copied to RDS. With the local stack running:
+NBA.com does not answer requests from cloud servers (a request to stats.nba.com from the EC2 server timed out after 30 seconds on 2026-11-04), so data is downloaded on a local machine. To copy a whole local database to RDS, with the local stack running:
 
 ```bash
 # On the local machine: back up the local database and copy it to the server
@@ -94,6 +94,25 @@ docker compose -f docker-compose.prod.yml run --rm -v ~/nba.dump:/backup.dump:ro
 ```
 
 `--clean` replaces every table in RDS, so take an RDS snapshot first. `--single-transaction` with `--exit-on-error` rolls the whole restore back if any step fails.
+
+### Updating the season in progress
+
+The live season is updated from a local machine through an SSH tunnel: the local pipeline connects to port 5434 on the local machine, SSH forwards it to the server, and the server opens the connection to RDS. RDS stays private, since the connection still reaches it from the server's security group. In one terminal, open the tunnel and leave it running (it prints nothing):
+
+```powershell
+ssh -i <key> -N -o ServerAliveInterval=30 -o ServerAliveCountMax=4 -L 5434:<rds-endpoint>:5432 ubuntu@<elastic-ip>
+```
+
+In a second terminal, from the repo root with the virtual environment set up, point the pipeline at the tunnel and run the refresh. The password is read without echoing it, and the third line must print `localhost:5434`; otherwise the refresh writes to the local database instead:
+
+```powershell
+$env:DB_HOST = "localhost"; $env:DB_PORT = "5434"; $env:DB_NAME = "nba_predictor"; $env:DB_USER = "postgres"; $env:PGSSLMODE = "require"
+$env:DB_PASSWORD = [Net.NetworkCredential]::new("", (Read-Host -AsSecureString "RDS password")).Password
+$env:DB_HOST + ":" + $env:DB_PORT
+.venv\Scripts\python.exe -m scripts.refresh_season --season 2026-27
+```
+
+The refresh only adds and updates the season's rows (see [pipeline.md](pipeline.md#a-season-in-progress)). Through the tunnel it took about 9 minutes on 2026-11-04, most of it writing rows one at a time across the country. Close the second terminal afterwards, so the password and the RDS settings do not stay in that session, and stop the tunnel with Ctrl+C.
 
 ## Updating
 
